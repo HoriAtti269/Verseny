@@ -138,7 +138,7 @@
   function ervenyesAlap(jatek, d) {
     if (!jatek || !d || typeof d !== 'object') return false;
     var e = jatek.eredmeny || {};
-    if (jatek.tipus === 'pontgyujto') return egeszE(d.sz, 0, Number(e.max) || 0);
+    if (jatek.tipus === 'pontgyujto') return e.mod === 'helyezes' ? egeszE(d.sz, 1, Number(e.max) || MAX_JATEKOS) : egeszE(d.sz, 0, Number(e.max) || 0);
     switch (e.mod) {
       case 'gyd': return ['gy', 'v', 'd'].indexOf(d.e) >= 0 && (!e.szam || egeszE(d.sz, 0, Number(e.szam.max) || 0));
       case 'cel': return egeszE(d.sz, 0, Number(e.cel) || 0);
@@ -213,9 +213,9 @@
       return (y.pont - x.pont) || (y.gy - x.gy) || (y.fol - x.fol) || (y.buch - x.buch) || String(x.nev).localeCompare(String(y.nev), 'hu');
     });
   }
-  function helyezesPontok(sorok, maxPont) {
-    // holtversenyben átlagolt helyezés; 1. = maxPont, utolsó = 0
-    var N = sorok.length, s = sorok.slice().sort(function (x, y) { return y.ossz - x.ossz; }), p = 0;
+  function helyezesPontok(sorok, maxPont, kevesebb) {
+    // holtversenyben átlagolt helyezés; 1. = maxPont, utolsó = 0 (csapatversenyben, a régi Kupával egyezően)
+    var N = sorok.length, s = sorok.slice().sort(function (x, y) { return kevesebb ? x.ossz - y.ossz : y.ossz - x.ossz; }), p = 0;
     while (p < N) {
       var v = p;
       while (v + 1 < N && s[v + 1].ossz === s[p].ossz) v++;
@@ -227,6 +227,7 @@
   }
 
   function allasSzamol(cfg, beirasok) {
+    if (egyeniE(cfg)) return egyeniAllas(cfg, beirasok);   // egyéni: helyezés-alapú összesítés
     var K = K_(cfg), T = (cfg.csapatok || []).length, U = T * K;
     var u = utolsoBeirasok(beirasok), meccsek = meccsLista(cfg);
     var egysegek = [], csapatok = [], i;
@@ -251,13 +252,7 @@
     meccsek.forEach(function (m) {
       if (!m.jatek) return;
       var a = meccsAllapot(m, u);
-      if (m.jatek.tipus === 'pontgyujto') {
-        var tb = tablak[m.jatekId], o = m.oldalak[0];
-        tb.ossz++;
-        if (!tb.sorok[o]) tb.sorok[o] = { oldal: o, nev: oldalNev(cfg, o), tagok: tagNevek(cfg, o), reszek: [], ossz: 0, pont: 0 };
-        if (a.allapot === 'ok') { tb.sorok[o].reszek.push(a.sz); tb.sorok[o].ossz += a.sz; tb.db++; }
-        return;
-      }
+      if (m.jatek.tipus === 'pontgyujto') { pontSor(cfg, tablak[m.jatekId], m, a); return; }
       if (a.allapot !== 'ok') return;
       var oa = m.oldalak[0], ob = m.oldalak[1];
       var pa = a.gyoztes === 'a' ? 3 : a.gyoztes === 'd' ? 1 : 0, pb = a.gyoztes === 'b' ? 3 : a.gyoztes === 'd' ? 1 : 0;
@@ -273,22 +268,94 @@
     egysegek.forEach(function (x) { x.buch = x.ellen.reduce(function (s, q) { return s + egysegek[q].pont; }, 0); });
     csapatok.forEach(function (x) { x.buch = x.ellen.reduce(function (s, q) { return s + csapatok[q].pont; }, 0); });
 
-    // Pontgyűjtő játékok
-    var jatekTablak = [];
+    // Pontgyűjtő játékok (csapatversenyben a helyezési pont átlagolt, a régi Kupával egyezően)
+    var ptTar = {};
     Object.keys(tablak).forEach(function (id) {
-      var tb = tablak[id], j = tb.jatek;
-      var sorok = Object.keys(tb.sorok).map(function (k) { return tb.sorok[k]; });
-      var kesz = tb.ossz > 0 && tb.db === tb.ossz;
-      if (j.ertek === 'helyezes') {
-        if (kesz) helyezesPontok(sorok, Number(j.maxPont) || 12);
-      } else sorok.forEach(function (s) { s.pont = s.ossz; });
-      if (j.ertek !== 'helyezes' || kesz) sorok.forEach(function (s) { jovair(s.oldal, s.pont, 0, null); });
-      sorok.sort(function (x, y) { return y.ossz - x.ossz; });
-      jatekTablak.push({ jatekId: id, nev: j.nev, ertek: j.ertek, sorok: sorok, kesz: kesz, db: tb.db, ossz: tb.ossz });
+      var t = pontTablaZar(tablak[id], false);
+      if (t.ertek !== 'helyezes' || t.kesz) t.sorok.forEach(function (s) { jovair(s.oldal, s.pont, 0, null); });
+      ptTar[id] = t;
     });
+    // Minden játéknak saját tábla, a játékok sorrendjében (a párharcé csak tájékoztató)
+    var jatekTablak = (cfg.jatekok || []).map(function (j) { return j.tipus === 'pontgyujto' ? ptTar[j.id] : parharcTabla(cfg, j, meccsek, u, false); });
 
     [egysegek, csapatok].forEach(function (l) { l.forEach(function (x) { x.pont = kerekit(x.pont, 2); x.fol = kerekit(x.fol, 2); delete x.ellen; }); });
     return { K: K, egysegek: rendez(egysegek), csapatok: rendez(csapatok), jatekTablak: jatekTablak };
+  }
+
+  // ---------------------------------------------------------
+  // Helyezések: sport-sorrend (1., 1., 3.), játékonkénti táblák, egyéni összesítés
+  // ---------------------------------------------------------
+  function egyeniE(cfg) { return Number((cfg.beallit || {}).meret) === 1; }
+  function osszesitesMod(cfg) { return egyeniE(cfg) && (cfg.beallit || {}).osszesites === 'helyezes' ? 'helyezes' : 'pont'; }
+  // Pontgyűjtőnél a kisebb-e a jobb: „Kevesebb a jobb”, vagy helyezést írnak be
+  function kevesebbJobb(j) { var e = j.eredmeny || {}; return e.mod === 'helyezes' || e.jobb === 'kevesebb'; }
+  // A ténylegesen használt érték: ha a kisebb a jobb, csak helyezés szerint számolható
+  function ertekMod(j) { return j.tipus === 'pontgyujto' && kevesebbJobb(j) ? 'helyezes' : j.ertek; }
+  // Rendezett sorokra helyezést ír; az egyenlők ugyanazt kapják, a következő kimarad
+  function sportHely(sorok, egyenlo) {
+    sorok.forEach(function (s, i) { s.hely = i > 0 && egyenlo(sorok[i - 1], s) ? sorok[i - 1].hely : i + 1; });
+  }
+  // Helyezésből pont: 1. = maxPont, utolsó = 0; holtversenyben mindenki a jobb hely pontját kapja
+  function helyPont(hely, N, maxPont) { return N > 1 ? kerekit(maxPont * (N - hely) / (N - 1), 1) : maxPont; }
+
+  // Egy pontgyűjtő meccs beírása a játék táblájába
+  function pontSor(cfg, tb, m, a) {
+    var o = m.oldalak[0];
+    tb.ossz++;
+    if (!tb.sorok[o]) tb.sorok[o] = { oldal: o, nev: oldalNev(cfg, o), tagok: tagNevek(cfg, o), reszek: [], ossz: 0, pont: 0 };
+    if (a.allapot === 'ok') { tb.sorok[o].reszek.push(a.sz); tb.sorok[o].ossz += a.sz; tb.db++; }
+  }
+  // Pontgyűjtő tábla lezárása: sorrend, helyezés, pont
+  function pontTablaZar(tb, egyeni) {
+    var j = tb.jatek, mod = ertekMod(j), kev = kevesebbJobb(j), max = Number(j.maxPont) || 12;
+    var sorok = Object.keys(tb.sorok).map(function (k) { return tb.sorok[k]; });
+    var kesz = tb.ossz > 0 && tb.db === tb.ossz;
+    sorok.sort(function (x, y) { return kev ? x.ossz - y.ossz : y.ossz - x.ossz; });
+    sportHely(sorok, function (x, y) { return x.ossz === y.ossz; });
+    if (mod === 'helyezes') {
+      if (kesz) { if (egyeni) sorok.forEach(function (s) { s.pont = helyPont(s.hely, sorok.length, max); }); else helyezesPontok(sorok, max, kev); }
+    } else sorok.forEach(function (s) { s.pont = s.ossz; });
+    return { jatekId: j.id, nev: j.nev, tipus: 'pontgyujto', ertek: mod, kevesebb: kev, sorok: sorok, kesz: kesz, db: tb.db, ossz: tb.ossz };
+  }
+  // Párharc-játék saját tabellája (3-1-0, egymás elleni, különbség, szerzett pont) helyezéssel
+  function parharcTabla(cfg, j, lista, u, egyeni) {
+    var K = K_(cfg), T = (cfg.csapatok || []).length, oldalak = [], i;
+    if (hatekonySzint(j, K) === 'csapat') { for (i = 0; i < T; i++) oldalak.push('t' + i); }
+    else for (i = 0; i < T * K; i++) oldalak.push('u' + i);
+    var t = tabellaSzamol(cfg, lista.filter(function (m) { return m.jatekId === j.id; }), u, oldalak), max = Number(j.maxPont) || 12;
+    sportHely(t.sorok, function (x, y) { return x.pont === y.pont && x.mini === y.mini && x.kul === y.kul && x.sz === y.sz; });
+    if (egyeni && t.kesz) t.sorok.forEach(function (s) { s.hp = helyPont(s.hely, t.sorok.length, max); });
+    return { jatekId: j.id, nev: j.nev, tipus: 'parharc', sorok: t.sorok, kesz: t.kesz, db: t.db, ossz: t.ossz };
+  }
+
+  // Egyéni verseny összesítése: minden játékból helyezés lesz (csak a kész játéké számít)
+  //  - Pontok: a helyezés pontot ér (pontgyűjtő „Pontok összege” módban a nyers pont), a több nyer
+  //  - Helyezési számok: a helyezések összeadódnak, a kevesebb nyer
+  function egyeniAllas(cfg, beirasok) {
+    var u = utolsoBeirasok(beirasok), lista = meccsLista(cfg), mod = osszesitesMod(cfg), T = (cfg.csapatok || []).length, i;
+    var sorok = [];
+    for (i = 0; i < T; i++) sorok.push({ id: i, oldal: 'u' + i, nev: oldalNev(cfg, 'u' + i), tagok: tagNevek(cfg, 'u' + i), pont: 0, helyOssz: 0, gy: 0, d: 0, v: 0, fol: 0, buch: 0, jatszott: 0, reszek: [] });
+    var tablak = {};
+    (cfg.jatekok || []).forEach(function (j) { if (j.tipus === 'pontgyujto') tablak[j.id] = { jatek: j, sorok: {}, db: 0, ossz: 0 }; });
+    lista.forEach(function (m) { if (m.jatek && m.jatek.tipus === 'pontgyujto') pontSor(cfg, tablak[m.jatekId], m, meccsAllapot(m, u)); });
+    var jatekTablak = (cfg.jatekok || []).map(function (j) { return j.tipus === 'pontgyujto' ? pontTablaZar(tablak[j.id], true) : parharcTabla(cfg, j, lista, u, true); });
+    var kesz = 0;
+    jatekTablak.forEach(function (t) {
+      if (t.kesz) kesz++;
+      t.sorok.forEach(function (s) {
+        var r = sorok[Number(s.oldal.slice(1))];
+        if (!r) return;
+        var resz = { jatekId: t.jatekId, nev: t.nev, hely: t.kesz ? s.hely : null, pont: null };
+        if (mod === 'helyezes') { if (t.kesz) r.helyOssz += s.hely; }
+        else if (t.tipus === 'pontgyujto' && t.ertek !== 'helyezes') { resz.pont = s.ossz; r.pont += s.ossz; }
+        else if (t.kesz) { resz.pont = t.tipus === 'parharc' ? s.hp : s.pont; r.pont += resz.pont; }
+        r.reszek.push(resz);
+      });
+    });
+    sorok.forEach(function (r) { r.pont = kerekit(r.pont, 2); });
+    sorok.sort(function (x, y) { return (mod === 'helyezes' ? x.helyOssz - y.helyOssz : y.pont - x.pont) || String(x.nev).localeCompare(String(y.nev), 'hu'); });
+    sportHely(sorok, function (x, y) { return mod === 'helyezes' ? x.helyOssz === y.helyOssz : x.pont === y.pont; });
+    return { K: 1, egyeni: true, osszesites: mod, egysegek: sorok, csapatok: sorok, jatekTablak: jatekTablak, keszJatek: kesz };
   }
 
   // ---------------------------------------------------------
@@ -598,7 +665,8 @@
     allomasPerc: allomasPerc, osszIdo: osszIdo, hatraLevo: hatraLevo,
     valodiOldal: valodiOldal, meccsKesz: meccsKesz, csoportNev: csoportNev, szakaszNev: szakaszNev, bajnoksagE: bajnoksagE,
     resztvevoOldalak: resztvevoOldalak, refNev: refNev, szerzettPontok: szerzettPontok, tabellaSzamol: tabellaSzamol,
-    seedSorrend: seedSorrend, seedFelold: seedFelold, bajnoksagAllas: bajnoksagAllas
+    seedSorrend: seedSorrend, seedFelold: seedFelold, bajnoksagAllas: bajnoksagAllas,
+    egyeniE: egyeniE, osszesitesMod: osszesitesMod, kevesebbJobb: kevesebbJobb, ertekMod: ertekMod, sportHely: sportHely, helyPont: helyPont
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Logika;
   else gyoker.Logika = Logika;

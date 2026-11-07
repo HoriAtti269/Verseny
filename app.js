@@ -169,7 +169,7 @@
   function adatSzoveg(j, d) {
     if (!d) return '–';
     var e = j.eredmeny || {};
-    if (j.tipus === 'pontgyujto') return d.sz + ' pont';
+    if (j.tipus === 'pontgyujto') return d.sz + (e.mod === 'helyezes' ? '. hely' : ' pont');
     if (e.mod === 'gyd') return { gy: 'nyert', v: 'vesztett', d: 'döntetlen' }[d.e] + (e.szam ? ', ' + d.sz + ' (' + (e.szam.cimke || 'szám') + ')' : '');
     if (e.mod === 'cel') return e.irany === 'le' ? (d.sz === 0 ? 'kiszállt (0)' : d.sz + ' maradt') : d.sz + ' pont';
     if (e.mod === 'tobb') return d.sz + ' pont, ' + (d.kesz ? 'befejezve' : 'lejárt az idő');
@@ -178,7 +178,7 @@
   // p: kinek a szemszögéből (oldal), vagy semleges
   function osszegzes(m, st, p) {
     var j = m.jatek;
-    if (j.tipus === 'pontgyujto') return st.allapot === 'ok' ? st.sz + ' pont' : '';
+    if (j.tipus === 'pontgyujto') return st.allapot === 'ok' ? st.sz + ((j.eredmeny || {}).mod === 'helyezes' ? '. hely' : ' pont') : '';
     if (!st.da || !st.db) return st.admin ? (st.gyoztes === 'd' ? 'döntetlen' : L.oldalRovidNev(cfg(), m.oldalak[st.gyoztes === 'a' ? 0 : 1]) + ' nyert') : '';
     var fordit = p !== undefined && p === m.oldalak[1], x = fordit ? st.db : st.da, y = fordit ? st.da : st.db, e = j.eredmeny, s;
     if (e.mod === 'gyd') s = e.szam ? x.sz + ' : ' + y.sz : '';
@@ -304,7 +304,7 @@
   // =========================================================
   function alapAdat(j) {
     var e = j.eredmeny || {};
-    if (j.tipus === 'pontgyujto') return { sz: 0 };
+    if (j.tipus === 'pontgyujto') return { sz: e.mod === 'helyezes' ? 1 : 0 };
     if (e.mod === 'gyd') return e.szam ? { e: 'gy', sz: 0 } : { e: 'gy' };
     if (e.mod === 'cel') return { sz: e.irany === 'le' ? Number(e.cel) : 0 };
     return { sz: 0, kesz: true };
@@ -319,8 +319,8 @@
     return '<div class="lepteto' + (kis ? ' kis' : '') + '"><button aria-label="Kevesebb" data-akcio="lep" data-t="' + t + '" data-mezo="' + mezo + '" data-d="-1" data-min="' + min + '" data-max="' + max + '">−</button>' +
       '<span class="ertek">' + ertek + '</span><button aria-label="Több" data-akcio="lep" data-t="' + t + '" data-mezo="' + mezo + '" data-d="1" data-min="' + min + '" data-max="' + max + '">+</button></div>';
   }
-  function szamMezo(t, mezo, ertek, max, kis) {
-    if (max <= 30) return lepteto(t, mezo, ertek, 0, max, kis);
+  function szamMezo(t, mezo, ertek, max, kis, min) {
+    if (max <= 30) return lepteto(t, mezo, ertek, min || 0, max, kis);
     return '<input class="szammezo" inputmode="numeric" data-t="' + t + '" data-szam="' + mezo + '" data-max="' + max + '" value="' + ertek + '"' + (kis ? ' style="height:52px;font-size:28px"' : '') + '>';
   }
   function valaszto(t, mezo, aktualis, opciok) {
@@ -330,6 +330,7 @@
   }
   function tetelHtml(te, i, sajatSzem, kis) {
     var j = te.m.jatek, e = j.eredmeny || {}, d = te.adat, h = '';
+    if (j.tipus === 'pontgyujto' && e.mod === 'helyezes') return h + '<b>' + esc(e.cimke || 'Hányadik helyen végzett?') + '</b>' + szamMezo(i, 'sz', d.sz, Number(e.max), kis, 1);
     if (j.tipus === 'pontgyujto') return h + '<b>' + esc(e.cimke || 'Pont') + '</b>' + szamMezo(i, 'sz', d.sz, Number(e.max), kis);
     if (te.m.kieses) {
       var ell = te.m.oldalak[0] === te.oldal ? te.m.oldalak[1] : te.m.oldalak[0];
@@ -415,16 +416,33 @@
     a.jatekTablak.forEach(function (t) { fulek.push(['j:' + t.jatekId, t.nev]); });
     if (!fulek.some(function (f) { return f[0] === A.allasFul; })) A.allasFul = 'csapat';
     h += '<div class="fulek" style="overflow-x:auto">' + fulek.map(function (f) { return '<button data-akcio="allasFul" data-ertek="' + esc(f[0]) + '" class="' + (A.allasFul === f[0] ? 'akt' : '') + '">' + esc(f[1]) + '</button>'; }).join('') + '</div>';
+    var hm = a.egyeni && a.osszesites === 'helyezes';
     if (A.allasFul.indexOf('j:') === 0) {
-      var t = a.jatekTablak.filter(function (x) { return 'j:' + x.jatekId === A.allasFul; })[0], hely = t.ertek === 'helyezes';
+      var t = a.jatekTablak.filter(function (x) { return 'j:' + x.jatekId === A.allasFul; })[0];
+      if (t.tipus === 'parharc') return h + parharcFulHtml(t, a);
+      var hely = t.ertek === 'helyezes' && !hm, bemod = (jatek(t.jatekId).eredmeny || {}).mod === 'helyezes';
       var gr = 'grid-template-columns:26px minmax(0,1fr) 70px' + (hely ? ' 46px' : '');
-      h += '<div class="tabla"><div class="tsor fej2" style="' + gr + '"><span>#</span><span>RÉSZTVEVŐ</span><span class="j">ÖSSZ</span>' + (hely ? '<span class="j">P</span>' : '') + '</div>';
-      t.sorok.forEach(function (s, i) {
-        h += '<div class="tsor" style="' + gr + '"><span class="hely">' + (i + 1) + '</span><span class="nev">' + esc(s.nev) + '<small>' + esc((s.reszek.length ? s.reszek.join(' + ') : 'még nincs') + (s.tagok && !egyeni ? ' · ' + s.tagok : '')) + '</small></span>' +
+      h += '<div class="tabla"><div class="tsor fej2" style="' + gr + '"><span>#</span><span>RÉSZTVEVŐ</span><span class="j">' + (bemod ? 'Σ HELY' : 'ÖSSZ') + '</span>' + (hely ? '<span class="j">P</span>' : '') + '</div>';
+      t.sorok.forEach(function (s) {
+        h += '<div class="tsor" style="' + gr + '"><span class="hely">' + s.hely + '</span><span class="nev">' + esc(s.nev) + '<small>' + esc((s.reszek.length ? s.reszek.join(' + ') : 'még nincs') + (s.tagok && !egyeni ? ' · ' + s.tagok : '')) + '</small></span>' +
           '<span class="j"><b>' + s.ossz + '</b></span>' + (hely ? '<span class="j">' + (t.kesz ? szamF(s.pont) : '–') + '</span>' : '') + '</div>';
       });
-      h += '</div><div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">' + t.db + ' / ' + t.ossz + ' beírva. ' +
-        (hely ? 'A helyezés szerinti 0–' + (jatek(t.jatekId).maxPont || 12) + ' pont az utolsó beírás után kerül az összesítettbe' + (a.K > 1 && jatek(t.jatekId).szint === 'csapat' ? ' (az egységek egyenlően osztoznak)' : '') + '.' : 'A pontok közvetlenül az összesítettbe kerülnek.') + '</span></div>';
+      h += '</div><div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">' + t.db + ' / ' + t.ossz + ' beírva. ' + (t.kevesebb ? 'A kisebb a jobb. ' : '') +
+        (hm ? 'A játék végső helyezése az utolsó beírás után kerül az összesítettbe.' :
+          hely ? 'A helyezés szerinti 0–' + (jatek(t.jatekId).maxPont || 12) + ' pont az utolsó beírás után kerül az összesítettbe' + (a.K > 1 && jatek(t.jatekId).szint === 'csapat' ? ' (az egységek egyenlően osztoznak)' : '') + '.' : 'A pontok közvetlenül az összesítettbe kerülnek.') + '</span></div>';
+      return h;
+    }
+    if (a.egyeni) {
+      // egyéni összesítés: helyezési pontok vagy helyezési számok
+      var gr3 = ' style="grid-template-columns:26px minmax(0,1fr) 60px"';
+      h += '<div class="tabla"><div class="tsor fej2"' + gr3 + '><span>#</span><span>JÁTÉKOS</span><span class="j">' + (hm ? 'Σ HELY' : 'P') + '</span></div>';
+      a.csapatok.forEach(function (x) {
+        var resz = x.reszek.map(function (r) { return r.nev + ' ' + (r.hely ? r.hely + '.' : '–') + (!hm && r.pont != null ? ' (' + szamF(r.pont) + ')' : ''); }).join(' · ');
+        h += '<div class="tsor' + (x.hely <= 3 ? ' dobogo' : '') + '"' + gr3 + '><span class="hely">' + x.hely + '</span><span class="nev">' + esc(x.nev) + '<small>' + esc(resz) + '</small></span>' +
+          '<span class="j"><b>' + (hm ? x.helyOssz : szamF(x.pont)) + '</b></span></div>';
+      });
+      h += '</div><span class="kicsi" style="text-transform:none">' + (hm ? 'Σ HELY = a kész játékok helyezéseinek összege, a kisebb a jobb' : 'P = a játékok pontjainak összege (zárójelben játékonként)') +
+        ' · ' + a.keszJatek + ' / ' + a.jatekTablak.length + ' játék kész · holtversenyben azonos helyezés</span>';
       return h;
     }
     var lista = A.allasFul === 'egyseg' ? a.egysegek : a.csapatok;
@@ -440,6 +458,23 @@
     h += '</div>';
     if (parharc) h += '<span class="kicsi" style="text-transform:none">P = pont (győzelem 3, döntetlen 1) · GY = győzelem · FÖL = fölény-index · holtversenynél: GY, FÖL, Buchholz</span>';
     return h;
+  }
+  // Egy párharc-játék saját tabellája (a játék fülén)
+  function parharcFulHtml(t, a) {
+    var c = cfg(), gr = 'grid-template-columns:22px minmax(0,1fr) 30px 58px 46px 42px', h = '';
+    h += '<div class="tabla"><div class="tsor fej2" style="' + gr + '"><span>#</span><span>' + esc(t.nev.toUpperCase()) + '</span><span class="j">P</span><span class="j">GY-D-V</span><span class="j">KÜL</span><span class="j">SZ</span></div>';
+    t.sorok.forEach(function (r) {
+      var kis = [];
+      if (r.tagok && Number(c.beallit.meret) > 1) kis.push(r.tagok);
+      if (a.egyeni && a.osszesites !== 'helyezes' && r.hp != null) kis.push('→ ' + szamF(r.hp) + ' pont az összesítésbe');
+      h += '<div class="tsor" style="' + gr + '"><span class="hely">' + r.hely + '</span><span class="nev">' + esc(r.nev) + (kis.length ? '<small>' + esc(kis.join(' · ')) + '</small>' : '') + '</span>' +
+        '<span class="j"><b>' + r.pont + '</b></span><span class="j">' + r.gy + '-' + r.d + '-' + r.v + '</span><span class="j">' + (r.kul > 0 ? '+' : '') + r.kul + '</span><span class="j" style="color:var(--szurke)">' + r.sz + '</span></div>';
+    });
+    h += '</div>';
+    if (t.sorok.some(function (r) { return r.egymasEllen; })) h += '<div class="uzenet info">Holtversenyben az egymás elleni eredmény döntött.</div>';
+    h += '<div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">' + t.db + ' / ' + t.ossz + ' meccs kész. ' +
+      (!a.egyeni ? 'Tájékoztató tabella – az összesítettbe a meccspontok (3-1-0) kerülnek.' : a.osszesites === 'helyezes' ? 'A végső helyezés az utolsó meccs után kerül az összesítettbe.' : 'A helyezés szerinti pont az utolsó meccs után kerül az összesítettbe.') + '</span></div>';
+    return h + '<span class="kicsi" style="text-transform:none">P = pont (3-1-0) · KÜL = pontkülönbség · SZ = szerzett pont · holtversenynél: egymás elleni, KÜL, SZ</span>';
   }
 
   // =========================================================
@@ -704,6 +739,14 @@
         if (Number(b.bontas) > 1) h += '<span style="font-size:13px;color:var(--szoveg2)">A csapat ' + L.egysegSzam(b) + ' ' + (Number(b.bontas) === 2 ? 'párra' : 'hármasra') + ' bomlik, külön ranglistával. A maradék tag a meglévő egységeket bővíti.</span>';
       }
     }
+    if (Number(b.meret) === 1) {
+      // egyéni verseny: hogyan adódnak össze a játékok
+      h += '<div class="kicsi">Összesítés</div>';
+      [['pont', 'Pontok', 'Minden játék helyezése pontot ér (1. hely = a játéknál megadott pont, utolsó = 0). A több pont nyer.'], ['helyezes', 'Helyezési számok', 'A játékokban elért helyezések összeadódnak. A kisebb összeg nyer.']].forEach(function (o) {
+        h += '<button class="opcio' + ((b.osszesites === 'helyezes' ? 'helyezes' : 'pont') === o[0] ? ' akt' : '') + '" data-akcio="vset" data-mezo="osszesites" data-ertek="' + o[0] + '"><span style="font-weight:700">' + o[1] + '</span><span style="font-size:13px">' + o[2] + '</span></button>';
+      });
+      h += '<span style="font-size:13px;color:var(--szoveg2)">Holtversenyben az egyenlők ugyanazt a helyezést kapják (1., 1., 3.). Egy játék csak akkor számít, ha minden eredménye kész.</span>';
+    }
     h += '<div class="kicsi">Létszámkülönbség (ha nem egyformák a csapatok vagy egységek)</div>';
     [['A', 'A) A kisebb dupláz', 'Pl. „+1 dobás jár” – a csapat dönti el, ki dobja.'], ['B', 'B) A nagyobbikból valaki pihen', 'A csapat választja ki; mindenki csak egyszer, amíg mindenki sorra nem került.']].forEach(function (o) {
       h += '<button class="opcio' + (b.kulonbseg === o[0] ? ' akt' : '') + '" data-akcio="vset" data-mezo="kulonbseg" data-ertek="' + o[0] + '"><span style="font-weight:700">' + o[1] + '</span><span style="font-size:13px">' + o[2] + '</span></button>';
@@ -761,10 +804,22 @@
       h += '<span class="kicsi">FORDULÓK HELYE</span><div class="racs3">' + jv('hol', 'elejen', 'Elején', j.hol === 'elejen') + jv('hol', 'kozben', 'Közben', j.hol === 'kozben') + jv('hol', 'vegen', 'Végén', j.hol !== 'elejen' && j.hol !== 'kozben') + '</div>';
     } else h += '<div class="racs2">' + jmezo('PÁLYÁK SZÁMA', 'palyak', j.palyak, 'szam') + jmezo('HÁNYSZOR JÁTSSZÁK', 'hanyszor', j.hanyszor, 'szam') + '</div>';
     h += '<span class="kicsi">MIT ÍRNAK BE</span>';
+    var egy = Number(A.V.beallit.meret) === 1, hm = egy && A.V.beallit.osszesites === 'helyezes';
     if (j.tipus === 'pontgyujto') {
-      h += '<div class="racs2">' + jmezo('MAX. PONT / BEÍRÁS', 'eredmeny.max', e.max, 'szam') + jmezo('FELIRAT', 'eredmeny.cimke', e.cimke) + '</div>';
-      h += '<span class="kicsi">MENNYIT ÉR A VERSENYBEN</span><div class="racs2">' + jv('ertek', 'osszeg', 'Pontok összege', j.ertek !== 'helyezes') + jv('ertek', 'helyezes', 'Helyezés → pont', j.ertek === 'helyezes') + '</div>';
-      if (j.ertek === 'helyezes') h += jmezo('AZ 1. HELYEZETT PONTJA (az utolsó 0)', 'maxPont', j.maxPont || 12, 'szam');
+      var helyBe = e.mod === 'helyezes', kev = L.kevesebbJobb(j);
+      h += '<div class="racs2">' + jv('pmod', 'szam', 'Pontot / számot', !helyBe) + jv('pmod', 'helyezes', 'Helyezést (1., 2., 3. …)', helyBe) + '</div>';
+      if (helyBe) h += '<span class="tagok">1-től a résztvevők számáig írható be. Több fordulónál a helyezések összeadódnak, a kisebb összeg a jobb.</span>' + jmezo('FELIRAT', 'eredmeny.cimke', e.cimke);
+      else {
+        h += '<div class="racs2">' + jmezo('MAX. PONT / BEÍRÁS', 'eredmeny.max', e.max, 'szam') + jmezo('FELIRAT', 'eredmeny.cimke', e.cimke) + '</div>';
+        h += '<div class="racs2">' + jv('pjobb', 'tobb', 'Több a jobb', !kev) + jv('pjobb', 'kevesebb', 'Kevesebb a jobb', kev) + '</div>';
+      }
+      if (hm) h += '<span class="tagok">Az összesítésbe a játék végső helyezése kerül.</span>';
+      else {
+        h += '<span class="kicsi">MENNYIT ÉR A VERSENYBEN</span>';
+        if (kev) h += '<span class="tagok">Ha a kisebb a jobb, csak helyezés szerint számolható: Helyezés → pont.</span>';
+        else h += '<div class="racs2">' + jv('ertek', 'osszeg', 'Pontok összege', j.ertek !== 'helyezes') + jv('ertek', 'helyezes', 'Helyezés → pont', j.ertek === 'helyezes') + '</div>';
+        if (kev || j.ertek === 'helyezes') h += jmezo('AZ 1. HELYEZETT PONTJA (az utolsó 0)', 'maxPont', j.maxPont || 12, 'szam');
+      }
     } else {
       h += '<div class="racs3">' + jv('mod', 'gyd', 'Ki nyert', e.mod === 'gyd') + jv('mod', 'cel', 'Célig', e.mod === 'cel') + jv('mod', 'tobb', 'Több pont', e.mod === 'tobb') + '</div>';
       if (e.mod === 'gyd') {
@@ -775,6 +830,12 @@
         h += '<div class="racs2">' + jmezo(e.irany === 'le' ? 'KEZDŐPONT' : 'CÉL', 'eredmeny.cel', e.cel, 'szam') + jmezo('FELIRAT', 'eredmeny.cimke', e.cimke) + '</div>';
       } else {
         h += '<span class="tagok">A több pont nyer. Ha lejár az idő: döntetlen.</span><div class="racs2">' + jmezo('MAX. PONT', 'eredmeny.max', e.max, 'szam') + jmezo('FELIRAT', 'eredmeny.cimke', e.cimke) + '</div>';
+      }
+      // egyéni, többjátékos verseny: a játék saját tabellája szerinti helyezés kerül az összesítésbe
+      if (egy && !L.bajnoksagE(A.V)) {
+        h += '<span class="kicsi">MENNYIT ÉR A VERSENYBEN</span>';
+        if (hm) h += '<span class="tagok">Az összesítésbe a játék saját tabellája szerinti helyezés kerül.</span>';
+        else h += '<span class="tagok">A játék saját tabellája szerinti helyezés pontot ér.</span>' + jmezo('AZ 1. HELYEZETT PONTJA (az utolsó 0)', 'maxPont', j.maxPont || 12, 'szam');
       }
     }
     h += '<span class="kicsi">KI ÍRJA BE</span><div class="racs2">' + jv('beiras', 'sajat', 'A résztvevők', j.beiras !== 'biro') + jv('beiras', 'biro', 'Versenybíró', j.beiras === 'biro') + '</div>';
@@ -788,7 +849,7 @@
       case 'tipus':
         if (j.tipus === ertek) return;
         j.tipus = ertek;
-        if (ertek === 'pontgyujto') { j.eredmeny = { mod: 'szam', max: 100, cimke: '' }; j.ertek = j.ertek || 'osszeg'; }
+        if (ertek === 'pontgyujto') { j.eredmeny = { mod: 'szam', max: 100, cimke: '', jobb: 'tobb' }; j.ertek = j.ertek || 'osszeg'; }
         else { j.eredmeny = { mod: 'gyd', szam: null }; j.egyszerre = false; }
         return;
       case 'egyszerre': j.egyszerre = ertek === 'true'; if (j.egyszerre) { j.perc = j.perc || 8; j.hol = j.hol || 'vegen'; } return;
@@ -798,6 +859,8 @@
         return;
       case 'gydSzam': e.szam = ertek === 'true' ? { cimke: '', max: 10, jobb: 'tobb' } : null; return;
       case 'jobb': if (e.szam) e.szam.jobb = ertek; return;
+      case 'pmod': e.mod = ertek === 'helyezes' ? 'helyezes' : 'szam'; if (e.mod === 'szam' && !(Number(e.max) > 0)) e.max = 100; return;
+      case 'pjobb': e.jobb = ertek === 'kevesebb' ? 'kevesebb' : 'tobb'; return;
       case 'irany': e.irany = ertek; if (ertek === 'le' && Number(e.cel) < 31) e.cel = 301; return;
       case 'kiegyenlit': j.kiegyenlit = ertek === 'true'; return;
       default: j[mezo] = ertek;
