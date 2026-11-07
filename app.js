@@ -155,6 +155,7 @@
     else if (A.nezet === 'menetrend') h += menetrendHtml();
     else if (A.nezet === 'vezerlo' && A.admin) h += vezerloHtml();
     else if (A.nezet === 'beallitas' && A.admin) h += beallitasHtml();
+    else if (A.nezet === 'modosit' && A.admin && A.M) h += modositHtml();
     else h += korHtml();
     return h + menuHtml();
   }
@@ -574,7 +575,86 @@
       });
       h += '</div><button class="gomb masod" data-akcio="kodokBe">Elrejtés</button>';
     }
-    return h + '</div>' + veszelyHtml();
+    return h + '</div>' + visszaHtml() + veszelyHtml();
+  }
+  // Vissza a beállításhoz: Nem = folytatás módosítással, Igen = újrakezdés az elejéről
+  function visszaHtml() {
+    return '<div class="sotet"><span class="kicsi">Vissza a beállításhoz</span>' +
+      '<div class="sor"><span style="font-weight:600">Eredmények törlése</span><button class="gomb ' + (A.eredmTorol ? 'vesz' : 'masod') + '" data-akcio="torlesKapcs">' + (A.eredmTorol ? 'Igen' : 'Nem') + '</button></div>' +
+      '<span style="font-size:13px;color:var(--szoveg2)">' + (A.eredmTorol ? 'Újrakezdés az elejéről: az eredmények törlődnek. A nevek, a játékok, a menetrend és a QR-kódok maradnak.' :
+        'Folytatás: az eredmények megmaradnak. Neveket és a játékok számait javíthatod, játékot törölhetsz.') + '</span>' +
+      '<button class="gomb masod" data-akcio="visszaBeall">Vissza a beállításhoz</button></div>';
+  }
+  // Futó verseny módosítása (nevek, játékok számai, játék törlése)
+  function mmezo(cimke, ut, ertek, szamE) {
+    return '<label class="mezocim">' + cimke + '<input class="mezo" data-mod="' + esc(ut) + '"' + (szamE ? ' inputmode="numeric"' : '') + ' value="' + esc(ertek == null ? '' : ertek) + '"></label>';
+  }
+  function modositHtml() {
+    var M2 = A.M, V = M2.V, K2 = L.egysegSzam(V.beallit), egyeni = Number(V.beallit.meret) === 1, hm = egyeni && V.beallit.osszesites === 'helyezes', h = '';
+    var marad = V.jatekok.filter(function (j) { return !j._torol; }).length;
+    h += '<div class="sor"><button class="gomb masod" data-akcio="modositBe">← Mégse</button><span class="kicsi">' + (M2.ujra ? 'Újrakezdés' : 'Folytatás') + '</span></div>';
+    h += '<h1>Módosítás</h1><div class="uzenet info">' + (M2.ujra ? 'Az eredmények törölve, a verseny az 1. körtől indul. A menetrend és a QR-kódok maradnak.' :
+      'Az eredmények megmaradnak, a verseny folytatódik. Játékos cseréjénél csak írd át a nevét.') + '</div>';
+    h += mmezo('A VERSENY NEVE', 'nev', V.nev);
+    h += '<div class="kicsi">Játékok</div>';
+    V.jatekok.forEach(function (j) {
+      var e = j.eredmeny || {}, p = 'j.' + j.id + '.';
+      if (j._torol) {
+        h += '<div class="sotet"><div class="sor"><span style="text-decoration:line-through;font-weight:600">' + esc(j.nev) + '</span><button class="gomb masod" data-akcio="modJatek" data-ertek="' + esc(j.id) + '">Visszaállítás</button></div>' +
+          '<span style="font-size:13px;color:var(--szoveg2)">Mentéskor törlődik a meccseivel és az eredményeivel együtt.</span></div>';
+        return;
+      }
+      h += '<div class="kartya">' + mmezo('JÁTÉK NEVE', p + 'nev', j.nev);
+      if (j.tipus === 'pontgyujto') {
+        if (e.mod !== 'helyezes') h += mmezo('LEGNAGYOBB BEÍRHATÓ SZÁM', p + 'eredmeny.max', e.max, true);
+        h += mmezo(KERDES, p + 'eredmeny.cimke', e.cimke);
+        if (!hm && L.ertekMod(j) === 'helyezes') h += mmezo('AZ 1. HELYEZETT PONTJA (az utolsó 0)', p + 'maxPont', j.maxPont || 12, true);
+      } else {
+        if (e.mod === 'cel') h += mmezo(e.irany === 'le' ? 'KEZDŐPONT' : 'CÉL', p + 'eredmeny.cel', e.cel, true) + mmezo(KERDES, p + 'eredmeny.cimke', e.cimke);
+        else if (e.mod === 'tobb') h += mmezo('LEGNAGYOBB BEÍRHATÓ SZÁM', p + 'eredmeny.max', e.max, true) + mmezo(KERDES, p + 'eredmeny.cimke', e.cimke);
+        else if (e.szam) h += mmezo('MI A SZÁM', p + 'eredmeny.szam.cimke', e.szam.cimke) + mmezo('MAX.', p + 'eredmeny.szam.max', e.szam.max, true);
+        if (egyeni && !hm && marad > 1) h += mmezo('AZ 1. HELYEZETT PONTJA (az utolsó 0)', p + 'maxPont', j.maxPont || 12, true);
+      }
+      h += '<button class="gomb vesz" data-akcio="modJatek" data-ertek="' + esc(j.id) + '"' + (marad < 2 ? ' disabled' : '') + '>Játék törlése</button></div>';
+    });
+    h += '<div class="kicsi">' + (egyeni ? 'Játékosok' : 'Csapatok') + '</div>';
+    if (egyeni) {
+      h += '<div class="kartya">';
+      V.csapatok.forEach(function (c, t) { h += '<input class="mezo" aria-label="' + (t + 1) + '. játékos" data-mod="c.' + t + '.egyeni" value="' + esc(c.nev) + '" maxlength="30">'; });
+      h += '</div>';
+    } else V.csapatok.forEach(function (c, t) {
+      h += '<div class="kartya csapatkartya"><label class="mezocim">' + (t + 1) + '. CSAPAT NEVE<input class="mezo" data-mod="c.' + t + '.nev" value="' + esc(c.nev) + '" maxlength="30"></label><div class="' + (K2 > 1 ? 'racs2' : '') + '">';
+      c.egysegek.forEach(function (e, k) {
+        h += '<div class="parblokk">';
+        if (K2 > 1) h += '<label class="mezocim">' + (k + 1) + '. ' + egysegSzo(V.beallit).toUpperCase() + ' NEVE<input class="mezo" data-mod="c.' + t + '.e' + k + '.nev" value="' + esc(e.nev) + '" maxlength="30"></label>';
+        e.tagok.forEach(function (tg, i) { h += '<input class="mezo" aria-label="' + (i + 1) + '. tag" data-mod="c.' + t + '.e' + k + '.t' + i + '" value="' + esc(tg) + '" maxlength="40">'; });
+        h += '</div>';
+      });
+      h += '</div></div>';
+    });
+    h += '<div class="racs2"><button class="gomb masod" data-akcio="modositBe">Mégse</button><button class="gomb fo" data-akcio="modositMent"' + (A.kuld ? ' disabled' : '') + '>Mentés</button></div>';
+    if (M2.ujra) h += '<div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">Létszám, új játék, „hányszor” vagy pályaszám is változik? Ehhez új sorsolás és új QR-kódok kellenek.</span>' +
+      '<button class="gomb vesz" data-akcio="teljesUjra">Teljes újrabeállítás (új sorsolás)</button></div>';
+    return h;
+  }
+  function modNyit(ujra) {
+    var c = cfg();
+    A.M = { ujra: ujra, V: { nev: c.nev, beallit: masol(c.beallit), jatekok: masol(c.jatekok), csapatok: masol(c.csapatok) } };
+    A.nezet = 'modosit'; A.javit = null; window.scrollTo(0, 0);
+  }
+  function modBeir(ut, el) {
+    var r = ut.split('.'), V = A.M.V, v = el.getAttribute('inputmode') === 'numeric' ? (parseInt(el.value, 10) || 0) : el.value;
+    if (r[0] === 'nev') { V.nev = v; return; }
+    if (r[0] === 'j') {
+      var o = V.jatekok.filter(function (x) { return x.id === r[1]; })[0];
+      for (var i = 2; i < r.length - 1; i++) o = o[r[i]] = o[r[i]] || {};
+      o[r[r.length - 1]] = v; return;
+    }
+    var c = V.csapatok[Number(r[1])];
+    if (r[2] === 'egyeni') { c.nev = v; c.egysegek[0].tagok[0] = v; return; }
+    if (r[2] === 'nev') { c.nev = v; return; }
+    var e = c.egysegek[Number(r[2].slice(1))];
+    if (r[3] === 'nev') e.nev = v; else e.tagok[Number(r[3].slice(1))] = v;
   }
   function veszelyHtml() {
     return '<div class="sotet" style="border:1px dashed var(--piros)"><span class="kicsi" style="color:var(--hiba-vil)">Veszélyes zóna</span>' +
@@ -657,7 +737,7 @@
   }
   function sablonBetolt(s, sajat) {
     A.V = { nev: s.nev || '', sablonId: sajat ? 'sajat' : s.id, beallit: masol(s.beallit), jatekok: masol(s.jatekok), csapatok: [], formatum: masol(s.formatum || { tipus: 'kor' }) };
-    A.sorsolt = null; A.lepes = 2; vazMeretez(true);
+    A.sorsolt = null; A.lepes = 2; A.sablonNev = null; vazMeretez(true);
   }
   // A csapatok szerkezetét a létszámhoz igazítja (nevek megmaradnak)
   function vazMeretez(ujra) {
@@ -696,7 +776,8 @@
     return h + lepes5();
   }
   function tovabbGomb(cimke) {
-    return '<div class="racs2"><button class="gomb masod" data-akcio="lepes" data-ertek="' + (A.lepes - 1) + '">← Vissza</button><button class="gomb fo" data-akcio="tovabb">' + (cimke || 'Tovább →') + '</button></div>';
+    return '<div class="racs2"><button class="gomb masod" data-akcio="lepes" data-ertek="' + (A.lepes - 1) + '">← Vissza</button><button class="gomb fo" data-akcio="tovabb">' + (cimke || 'Tovább →') + '</button></div>' +
+      '<button class="gomb masod" data-akcio="sablonMent">Mentés saját sablonként</button>';
   }
 
   function lepes1() {
@@ -708,10 +789,10 @@
     });
     h += '<div class="kicsi">Saját sablonok</div>';
     if (A.sablonok === null) { h += '<span class="halv">Betöltés…</span>'; sablonokLeker(); }
-    else if (!A.sablonok.length) h += '<span class="halv" style="font-size:14px">Még nincs. A Sorsolás lépésben bármely beállítást elmentheted sablonként.</span>';
+    else if (!A.sablonok.length) h += '<span class="halv" style="font-size:14px">Még nincs. A 2–5. lépésben bármely beállítást elmentheted sablonként.</span>';
     else A.sablonok.forEach(function (s, i) {
-      h += '<div class="racs2" style="grid-template-columns:minmax(0,1fr) auto"><button class="opcio" data-akcio="sajatSablon" data-ertek="' + i + '"><span class="cim" style="font-size:18px">' + esc(s.nev) + '</span><span class="kicsi" style="text-transform:none;font-weight:500">' +
-        esc(s.adat.jatekok.map(function (j) { return j.nev; }).join(', ')) + '</span></button><button class="gomb vesz" data-akcio="sablonTorol" data-ertek="' + i + '" aria-label="Sablon törlése">Törlés</button></div>';
+      h += '<div class="racs2" style="grid-template-columns:minmax(0,1fr) auto auto"><button class="opcio" data-akcio="sajatSablon" data-ertek="' + i + '"><span class="cim" style="font-size:18px">' + esc(s.nev) + '</span><span class="kicsi" style="text-transform:none;font-weight:500">' +
+        esc(s.adat.jatekok.map(function (j) { return j.nev; }).join(', ')) + '</span></button><button class="gomb masod" data-akcio="sablonSzerk" data-ertek="' + i + '">Szerkesztés</button><button class="gomb vesz" data-akcio="sablonTorol" data-ertek="' + i + '" aria-label="Sablon törlése">Törlés</button></div>';
     });
     return h;
   }
@@ -795,10 +876,20 @@
 
   function lepes3() {
     var V = A.V, K2 = L.egysegSzam(V.beallit), h = '<h1>Játékok</h1>';
-    V.jatekok.forEach(function (j) {
+    // egyéni versenynél választható: a program sorsolja a sorrendet, vagy a lista sorrendje szerint mennek egymás után
+    if (Number(V.beallit.meret) === 1 && V.jatekok.length > 1 && !A.szerkJatek) {
+      h += '<div class="kicsi">A játékok sorrendje</div>';
+      [['program', 'A program sorsolja', 'A játékok keverve, párhuzamosan futnak; a kvízfordulókat a program helyezi el.'], ['beirt', 'Ahogy beírtam', 'A játékok egymás után jönnek, a lista sorrendjében (↑↓). Egy játékon belül a párosítást a program csinálja.']].forEach(function (o) {
+        h += '<button class="opcio' + ((V.beallit.sorrend === 'beirt' ? 'beirt' : 'program') === o[0] ? ' akt' : '') + '" data-akcio="vset" data-mezo="sorrend" data-ertek="' + o[0] + '"><span style="font-weight:700">' + o[1] + '</span><span style="font-size:13px">' + o[2] + '</span></button>';
+      });
+    }
+    V.jatekok.forEach(function (j, i) {
       if (A.szerkJatek === j.id) { h += jatekSzerk(j, K2); return; }
       var leir = [j.tipus === 'parharc' ? 'párharc' : 'pontgyűjtő', j.egyszerre ? 'mindenki egyszerre, ' + j.hanyszor + ' forduló' : j.palyak + ' pálya, ' + j.hanyszor + '×', K2 > 1 ? (j.szint === 'csapat' ? 'egész csapat' : egysegSzo(V.beallit)) : '', j.beiras === 'biro' ? 'bíró' : 'saját beírás'].filter(Boolean).join(' · ');
+      h += '<div style="display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;gap:6px">';
       h += '<button class="opcio" data-akcio="szerk" data-ertek="' + esc(j.id) + '"><span class="sor" style="width:100%"><span style="font-weight:700">' + esc(j.nev) + '</span><span style="color:var(--arany);font-size:13px">Szerk.</span></span><span style="font-size:12px;color:var(--halvany)">' + esc(leir) + '</span></button>';
+      h += '<button class="gomb masod" style="padding:0" data-akcio="jatekMozgat" data-ertek="' + i + '|-1" aria-label="Feljebb"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<button class="gomb masod" style="padding:0" data-akcio="jatekMozgat" data-ertek="' + i + '|1" aria-label="Lejjebb"' + (i === V.jatekok.length - 1 ? ' disabled' : '') + '>↓</button></div>';
     });
     h += '<button class="gomb masod" data-akcio="ujJatek" style="border-style:dashed;color:var(--arany);border-color:var(--arany)">+ Új játék</button>';
     if (L.bajnoksagE(V) && !A.szerkJatek) h += formatumHtml();
@@ -839,7 +930,6 @@
     if (j.egyszerre) {
       // időmérés nélkül nincs „Perc / forduló” (a perc a háttérben marad, a szerver kéri)
       h += idoMeresE(A.V.beallit) ? '<div class="racs2">' + jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam') + jmezo('PERC / FORDULÓ', 'perc', j.perc, 'szam') + '</div>' : jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam');
-      h += '<span class="kicsi">FORDULÓK HELYE</span><div class="racs3">' + jv('hol', 'elejen', 'Elején', j.hol === 'elejen') + jv('hol', 'kozben', 'Közben', j.hol === 'kozben') + jv('hol', 'vegen', 'Végén', j.hol !== 'elejen' && j.hol !== 'kozben') + '</div>';
     } else {
       h += '<div class="racs2">' + jmezo('PÁLYÁK SZÁMA', 'palyak', j.palyak, 'szam') + jmezo('HÁNYSZOR JÁTSSZÁK', 'hanyszor', j.hanyszor, 'szam') + '</div>';
       if (j.tipus === 'parharc') h += '<button class="gomb vilagos" data-akcio="mindenki">Mindenki mindenki ellen (' + mindenkiSzam(A.V, j) + '×)</button>';
@@ -1059,6 +1149,28 @@
       kuld({ action: 'kor', pin: A.pin, cmd: d.ertek }).then(function () { A.adminKor = null; return lekeres(); });
     },
     javit: function (d) { A.javit = d.meccs; },
+    torlesKapcs: function () { A.eredmTorol = !A.eredmTorol; },
+    visszaBeall: function () {
+      if (!A.eredmTorol) { modNyit(false); return; }
+      var v = prompt('Az eredmények törlődnek, a verseny az 1. körtől indul. Ha biztos vagy, írd be: TÖRLÉS');
+      if (v === null) return;
+      kuld({ action: 'ujrakezd', pin: A.pin, megerosites: v.trim().toUpperCase(), teljes: false })
+        .then(function () { A.eredmTorol = false; A.utolsoFazis = {}; return lekeres(); }).then(function () { modNyit(true); render(true); }).catch(function () {});   // a hibát a kuld már kiírta
+    },
+    modJatek: function (d) { var j = A.M.V.jatekok.filter(function (x) { return x.id === d.ertek; })[0]; j._torol = !j._torol; },
+    modositBe: function () { A.M = null; A.nezet = 'vezerlo'; },
+    modositMent: function () {
+      var V = A.M.V, torolt = V.jatekok.filter(function (j) { return j._torol; }).map(function (j) { return j.nev; });
+      if (torolt.length && !confirm('Törlődik: ' + torolt.join(', ') + ' – a meccseivel és az eredményeivel együtt. Mehet?')) return;
+      kuld({ action: 'modosit', pin: A.pin, vazlat: { nev: V.nev, jatekok: V.jatekok.filter(function (j) { return !j._torol; }), csapatok: V.csapatok } })
+        .then(function () { A.M = null; A.nezet = 'vezerlo'; siker('Módosítás mentve ✓'); return lekeres(); }).catch(function () {});
+    },
+    teljesUjra: function () {
+      if (!confirm('Új sorsolás és új QR-kódok kellenek – a régi kódok érvénytelenek lesznek. Mehet?')) return;
+      kuld({ action: 'ujrakezd', pin: A.pin, megerosites: 'TÖRLÉS', teljes: true })
+        .then(function () { A.M = null; A.V = null; A.kodok = null; A.sorsolt = null; A.nezet = 'beallitas'; return lekeres(); })
+        .then(function () { A.lepes = 2; vazBetolt(); render(true); }).catch(function () {});
+    },
     javitBe: function () { A.javit = null; },
     adminUrlap: function (d) { urlapNyit([tetel(keres(A.javit), d.oldal)], 'admin'); },
     dont: function (d) { kuld({ action: 'adminBeir', pin: A.pin, tetelek: [{ meccs: A.javit, oldal: 'admin', adat: d.ertek ? { gyoztes: d.ertek } : null }] }).then(function () { return lekeres(); }); },
@@ -1079,15 +1191,25 @@
     },
     sablon: function (d) { sablonBetolt(SB.LISTA.filter(function (s) { return s.id === d.ertek; })[0], false); },
     sajatSablon: function (d) { var s = A.sablonok[Number(d.ertek)]; sablonBetolt({ nev: s.adat.nev || s.nev, beallit: s.adat.beallit, jatekok: s.adat.jatekok, formatum: s.adat.formatum }, true); },
+    // sablon szerkesztése: betöltés, és a mentés ugyanezt a nevet ajánlja fel
+    sablonSzerk: function (d) { var s = A.sablonok[Number(d.ertek)]; AKCIO.sajatSablon(d); A.sablonNev = s.nev; siker('Szerkesztés: „' + s.nev + '” – a Mentés saját sablonként felülírja'); },
     sablonTorol: function (d) {
       var s = A.sablonok[Number(d.ertek)];
       if (!confirm('Törlöd a(z) „' + s.nev + '” sablont?')) return;
       kuld({ action: 'sablonTorol', pin: A.pin, nev: s.nev }).then(function () { A.sablonok = null; render(true); });
     },
     sablonMent: function () {
-      var n = prompt('A sablon neve:', A.V.nev || '');
+      var n = prompt('A sablon neve:', A.sablonNev || A.V.nev || '');
       if (!n) return;
-      kuld({ action: 'sablonMent', pin: A.pin, nev: n.trim(), vazlat: A.V }).then(function () { A.sablonok = null; siker('Sablon mentve ✓'); });
+      n = n.trim();
+      // azonos név: a szerver előbb jelzi, felülírás csak megerősítés után
+      var ment = function (felulir) {
+        return kuld({ action: 'sablonMent', pin: A.pin, nev: n, vazlat: A.V, felulir: felulir }).then(function (v) {
+          if (v.letezik) { if (confirm('Már van „' + n + '” nevű sablon. Felülírod?')) return ment(true); return; }
+          A.sablonok = null; A.sablonNev = n; siker('Sablon mentve ✓');
+        });
+      };
+      ment(false).catch(function () {});
     },
     vset: function (d) {
       var b = A.V.beallit, v = /^\d+$/.test(d.ertek) ? Number(d.ertek) : d.ertek === 'true' ? true : d.ertek === 'false' ? false : d.ertek;
@@ -1097,6 +1219,12 @@
       A.sorsolt = null;
     },
     szerk: function (d) { A.szerkJatek = d.ertek || null; },
+    // játék fel/le a listában (= a lejátszás sorrendje „Ahogy beírtam” módban, és az Állás fülek sorrendje)
+    jatekMozgat: function (d) {
+      var r = d.ertek.split('|'), i = Number(r[0]), c = i + Number(r[1]), l = A.V.jatekok;
+      if (c < 0 || c >= l.length) return;
+      var x = l[i]; l[i] = l[c]; l[c] = x; A.sorsolt = null;
+    },
     mindenki: function () {
       var j = A.V.jatekok.filter(function (x) { return x.id === A.szerkJatek; })[0];
       j.hanyszor = mindenkiSzam(A.V, j); A.sorsolt = null;
@@ -1143,7 +1271,8 @@
   });
   $app.addEventListener('input', function (e) {
     var el = e.target, d = el.dataset;
-    if (d.vaz) vazBeir(d.vaz, el.value);
+    if (d.mod && A.M) modBeir(d.mod, el);
+    else if (d.vaz) vazBeir(d.vaz, el.value);
     else if (d.v) A.V[d.v] = el.value;
     else if (d.jm) {
       var j = A.V.jatekok.filter(function (x) { return x.id === A.szerkJatek; })[0], ut = d.jm.split('.'), o = j;

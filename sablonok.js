@@ -52,7 +52,8 @@
     var b = V.beallit || {};
     if (Number(b.meret) !== 4 || Number(b.bontas) !== 2) return false;
     var kulcs = function (l) {
-      return JSON.stringify((l || []).map(function (j) { return [j.id, j.tipus, j.szint, Number(j.palyak), Number(j.hanyszor), !!j.egyszerre]; }));
+      // a sorrend nem számít: az állomások úgyis párhuzamosan futnak
+      return JSON.stringify((l || []).map(function (j) { return [j.id, j.tipus, j.szint, Number(j.palyak), Number(j.hanyszor), !!j.egyszerre]; }).sort());
     };
     return kulcs(V.jatekok) === kulcs(KARACSONY_JATEKOK);
   }

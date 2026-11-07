@@ -304,7 +304,8 @@
         if (d.csapat) { for (var t = 0; t < F.T; t++) meccsek.push({ jatek: d.id, palya: null, oldalak: ['t' + t] }); }
         else for (var u = 0; u < F.U; u++) meccsek.push({ jatek: d.id, palya: null, oldalak: ['u' + u] });
         var kor = { tipus: 'egyszerre', jatek: d.id, perc: Math.max(1, Number(d.j.perc) || 5), meccsek: meccsek };
-        (d.j.hol === 'elejen' ? elejen : d.j.hol === 'kozben' ? kozben : vegen).push(kor);
+        // a fordulók helyét a program dönti el: egyenletesen a körök között (a régi „Közben”)
+        kozben.push(kor);
       }
     });
     var allPerc = L.allomasPerc(V.beallit, V.jatekok, allomasKorok.length);
@@ -351,6 +352,9 @@
     }
     if (F.Rmin > 150) return { hiba: 'Túl sok kör jönne ki (' + F.Rmin + '). Adj hozzá pályát, vagy csökkentsd, hányszor játsszák.' };
 
+    // „Ahogy beírtam” (csak egyéni): a játékok egymás után, a lista sorrendjében
+    if (sorbanE(V)) return generalSorban(V, opciok);
+
     // Karácsonyi sablon: a régi, gépileg ellenőrzött menetrend
     if (S && S.karacsonyiE(V) && S.karacsonyiMenetrend(F.T)) {
       var mr = osszerak(V, F, S.karacsonyiMenetrend(F.T));
@@ -376,6 +380,39 @@
     }
     var menetrend = osszerak(V, F, legjobb ? legjobb.korok : []);
     return { menetrend: menetrend, jelentes: ellenor(V, menetrend), forras: 'generalt' };
+  }
+
+  // ---------------------------------------------------------
+  // „Ahogy beírtam”: játékonként külön blokk, a lista sorrendjében
+  // ---------------------------------------------------------
+  function sorbanE(V) { return Number((V.beallit || {}).meret) === 1 && V.beallit.sorrend === 'beirt' && (V.jatekok || []).length > 1; }
+  function generalSorban(V, opciok) {
+    var ido = opciok.ido || 3000, n = V.jatekok.length, K = L.egysegSzam(V.beallit), T = V.csapatok.length, korok = [], allomasDb = 0;
+    for (var i = 0; i < n; i++) {
+      var j = V.jatekok[i];
+      if (j.egyszerre) {
+        for (var k = 0; k < (Number(j.hanyszor) || 0); k++) {
+          var meccsek = [], csap = L.hatekonySzint(j, K) === 'csapat';
+          for (var x = 0; x < (csap ? T : T * K); x++) meccsek.push({ jatek: j.id, palya: null, oldalak: [(csap ? 't' : 'u') + x] });
+          korok.push({ tipus: 'egyszerre', jatek: j.id, perc: Math.max(1, Number(j.perc) || 5), meccsek: meccsek });
+        }
+        continue;
+      }
+      // egy játék menetrendje a meglévő sorsolóval (a többi játék nélkül)
+      var Vj = { beallit: Object.assign({}, V.beallit, { sorrend: 'program' }), jatekok: [j], csapatok: V.csapatok, sablonId: '', formatum: { tipus: 'kor' } };
+      var g = general(Vj, { ido: Math.max(500, Math.floor(ido / n)), seed: opciok.seed == null ? null : opciok.seed + i });
+      if (g.hiba) return { hiba: g.hiba };
+      g.menetrend.forEach(function (kor) {
+        korok.push({ tipus: 'allomas', meccsek: kor.meccsek.map(function (m) { return { jatek: m.jatek, palya: m.palya, oldalak: m.oldalak }; }) });
+        allomasDb++;
+      });
+    }
+    var perc = L.allomasPerc(V.beallit, V.jatekok, allomasDb);
+    korok.forEach(function (kor, r) {
+      if (kor.tipus === 'allomas') kor.perc = perc;
+      kor.meccsek.forEach(function (m) { m.id = (r + 1) + '-' + m.jatek + '-' + (kor.tipus === 'egyszerre' ? m.oldalak[0] : m.palya); });
+    });
+    return { menetrend: korok, jelentes: ellenor(V, korok), forras: 'sorban' };
   }
 
   // ---------------------------------------------------------
