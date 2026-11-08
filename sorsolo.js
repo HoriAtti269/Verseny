@@ -27,14 +27,27 @@
     (V.jatekok || []).forEach(function (j) {
       var lev = L.hatekonySzint(j, K);
       var d = { j: j, id: j.id, parharc: j.tipus === 'parharc', csapat: lev === 'csapat', h: Math.max(0, Number(j.hanyszor) || 0) };
+      // résztvevőnkénti kvóta (verseny közbeni újrasorsolásnál eltérhet); alapból mindenki h-szor
+      var kv = V.kvota && V.kvota[j.id], db = lev === 'csapat' ? T : T * K;
+      d.hk = [];
+      for (var x = 0; x < db; x++) d.hk.push(kv && typeof kv === 'object' ? Math.max(0, Number(kv[(lev === 'csapat' ? 't' : 'u') + x]) || 0) : d.h);
+      if (kv != null && typeof kv !== 'object') d.h = Math.max(0, Number(kv) || 0);   // egyszerre-játék: fordulók száma
+      if (kv && typeof kv === 'object') d.h = Math.max.apply(null, d.hk.concat([0]));
+      d.ossz = d.hk.reduce(function (a, b) { return a + b; }, 0);
       if (j.egyszerre && j.tipus === 'pontgyujto') egyszerre.push(d);
       else { d.palyak = Math.max(1, Number(j.palyak) || 1); d.kap = d.palyak * (d.parharc ? 2 : 1); allomas.push(d); }
     });
     var nT = 0, nU = 0;
     allomas.forEach(function (d) { if (d.csapat) nT += d.h; else nU += d.h; });
-    var R = allomas.length ? nT + nU : 0;
-    allomas.forEach(function (d) { if (d.h) R = Math.max(R, Math.ceil((d.csapat ? T : U) * d.h / d.kap)); });
-    return { K: K, T: T, U: U, allomas: allomas, egyszerre: egyszerre, nT: nT, nU: nU, Rmin: R };
+    // a legterheltebb egység: a csapatjátékai + a saját egységjátékai
+    var R = 0;
+    for (var u0 = 0; u0 < U && allomas.length; u0++) {
+      var ter = 0;
+      allomas.forEach(function (d) { ter += d.csapat ? d.hk[Math.floor(u0 / K)] : d.hk[u0]; });
+      R = Math.max(R, ter);
+    }
+    allomas.forEach(function (d) { if (d.ossz) R = Math.max(R, Math.ceil(d.ossz / d.kap)); });
+    return { K: K, T: T, U: U, allomas: allomas, egyszerre: egyszerre, nT: nT, nU: nU, Rmin: R, elozmeny: V.elozmeny || [] };
   }
 
   // ---------------------------------------------------------
@@ -43,22 +56,24 @@
   function idobeosztas(F, R, rnd, hatarido) {
     var K = F.K, T = F.T, U = F.U, G = F.allomas.length, A = F.allomas;
     var tp = [], up = [], r, t, u, gi;
-    var tl = [], ul = [];
-    A.forEach(function (d, g2) { for (var k = 0; k < d.h; k++) (d.csapat ? tl : ul).push(g2); });
+    // csapatonkénti (tlT) és egységenkénti (ulU) játéklista a kvóták szerint
+    var tlT = [], ulU = [], vanT = false;
+    for (t = 0; t < T; t++) { tlT.push([]); A.forEach(function (d, g2) { if (d.csapat) for (var k = 0; k < d.hk[t]; k++) tlT[t].push(g2); }); if (tlT[t].length) vanT = true; }
+    for (u = 0; u < U; u++) { ulU.push([]); A.forEach(function (d, g2) { if (!d.csapat) for (var k = 0; k < d.hk[u]; k++) ulU[u].push(g2); }); }
     var cs = function (x) { return Math.floor(x / K); };
 
     // ---- kezdőállapot: véletlen ----
     for (t = 0; t < T; t++) {
       var sor = []; for (r = 0; r < R; r++) sor.push(-1);
-      var korok = kever(Array.apply(null, { length: R }).map(function (_, x) { return x; }), rnd).slice(0, tl.length);
-      var jl = kever(tl.slice(), rnd);
+      var korok = kever(Array.apply(null, { length: R }).map(function (_, x) { return x; }), rnd).slice(0, tlT[t].length);
+      var jl = kever(tlT[t].slice(), rnd);
       korok.forEach(function (kr, x) { sor[kr] = jl[x]; });
       tp.push(sor);
       for (var k = 0; k < K; k++) {
         var us = sor.map(function (v) { return v >= 0 ? -2 : -1; });
         var szabad = []; for (r = 0; r < R; r++) if (us[r] === -1) szabad.push(r);
         kever(szabad, rnd);
-        kever(ul.slice(), rnd).forEach(function (g2, x) { us[szabad[x]] = g2; });
+        kever(ulU[t * K + k].slice(), rnd).forEach(function (g2, x) { us[szabad[x]] = g2; });
         up.push(us);
       }
     }
@@ -176,7 +191,7 @@
       } else {
         r1 = Math.floor(rnd() * R); r2 = Math.floor(rnd() * R);
         if (r1 === r2) continue;
-        if (tl.length && rnd() < 0.3) {
+        if (vanT && rnd() < 0.3) {
           t = Math.floor(rnd() * T);
           if (tp[t][r1] < 0 && tp[t][r2] < 0) continue;
           if (tp[t][r1] === tp[t][r2]) continue;
@@ -222,6 +237,7 @@
         egysegCsapat[b + '>' + cs(a)] = (egysegCsapat[b + '>' + cs(a)] || 0) + d;
       }
     }
+    (F.elozmeny || []).forEach(function (p) { valt(p, 1); });   // verseny közben: a már lejátszott párosítások
     function suly(x, y) {
       if (cs(x) === cs(y)) return Infinity;
       var w = 10 * (talal[x + '|' + y] || 0) + (csapatCsapat[ck(x, y)] || 0);
@@ -303,6 +319,7 @@
         var meccsek = [];
         if (d.csapat) { for (var t = 0; t < F.T; t++) meccsek.push({ jatek: d.id, palya: null, oldalak: ['t' + t] }); }
         else for (var u = 0; u < F.U; u++) meccsek.push({ jatek: d.id, palya: null, oldalak: ['u' + u] });
+        meccsek = meccsek.filter(function (m) { return L.aktivE(V, m.oldalak[0]); });   // a kiszállók nélkül
         var kor = { tipus: 'egyszerre', jatek: d.id, perc: Math.max(1, Number(d.j.perc) || 5), meccsek: meccsek };
         // a fordulók helyét a program dönti el: egyenletesen a körök között (a régi „Közben”)
         kozben.push(kor);
@@ -338,6 +355,8 @@
   function general(V, opciok) {
     opciok = opciok || {};
     if (V.formatum && V.formatum.tipus && V.formatum.tipus !== 'kor' && L.bajnoksagE(V)) return generalBajnoksag(V, opciok);
+    // többjátékos verseny, játékonkénti formátummal (kiesés / csoportkör + kiesés)
+    if (!L.bajnoksagE(V) && (V.jatekok || []).some(formatumosE)) return generalFormatummal(V, opciok);
     var rnd = veletlen(opciok.seed), ido = opciok.ido || 3000;
     var F = feladat(V);
     if (F.T < 2) return { hiba: 'Legalább 2 csapat (játékos) kell.' };
@@ -346,7 +365,8 @@
       var d = F.allomas[i];
       if (d.h < 1) return { hiba: d.j.nev + ': legalább 1-szer kell játszani.' };
       if (d.parharc && d.csapat && F.T < 2) return { hiba: d.j.nev + ': legalább 2 csapat kell.' };
-      if (d.parharc && ((d.csapat ? F.T : F.U) * d.h) % 2) {
+      if (V.kvota && V.kvota[d.id] && d.parharc && d.ossz % 2) return { hiba: d.j.nev + ': a hátralévő meccsek száma (' + d.ossz + ' résztvevő-meccs) páratlan, így valakinek kimaradna egy meccs. Változtass a „hányszor” mezőn.' };
+      if (!(V.kvota && V.kvota[d.id]) && d.parharc && ((d.csapat ? F.T : F.U) * d.h) % 2) {
         return { hiba: d.j.nev + ': ' + (d.csapat ? F.T : F.U) + ' résztvevő × ' + d.h + ' meccs páratlan szám, így valakinek kimaradna egy meccs. Írj páros számot a „hányszor” mezőbe (' + (d.h - 1 || 2) + ' vagy ' + (d.h + 1) + ').' };
       }
     }
@@ -355,8 +375,8 @@
     // „Ahogy beírtam” (csak egyéni): a játékok egymás után, a lista sorrendjében
     if (sorbanE(V)) return generalSorban(V, opciok);
 
-    // Karácsonyi sablon: a régi, gépileg ellenőrzött menetrend
-    if (S && S.karacsonyiE(V) && S.karacsonyiMenetrend(F.T)) {
+    // Karácsonyi sablon: a régi, gépileg ellenőrzött menetrend (verseny közbeni újrasorsolásnál nem)
+    if (!V.kvota && S && S.karacsonyiE(V) && S.karacsonyiMenetrend(F.T)) {
       var mr = osszerak(V, F, S.karacsonyiMenetrend(F.T));
       return { menetrend: mr, jelentes: ellenor(V, mr), forras: 'sablon' };
     }
@@ -391,15 +411,17 @@
     for (var i = 0; i < n; i++) {
       var j = V.jatekok[i];
       if (j.egyszerre) {
-        for (var k = 0; k < (Number(j.hanyszor) || 0); k++) {
+        var fordulo = V.kvota && V.kvota[j.id] != null ? Number(V.kvota[j.id]) || 0 : Number(j.hanyszor) || 0;   // kvóta: verseny közben
+        for (var k = 0; k < fordulo; k++) {
           var meccsek = [], csap = L.hatekonySzint(j, K) === 'csapat';
-          for (var x = 0; x < (csap ? T : T * K); x++) meccsek.push({ jatek: j.id, palya: null, oldalak: [(csap ? 't' : 'u') + x] });
+          for (var x = 0; x < (csap ? T : T * K); x++) if (L.aktivE(V, (csap ? 't' : 'u') + x)) meccsek.push({ jatek: j.id, palya: null, oldalak: [(csap ? 't' : 'u') + x] });
           korok.push({ tipus: 'egyszerre', jatek: j.id, perc: Math.max(1, Number(j.perc) || 5), meccsek: meccsek });
         }
         continue;
       }
       // egy játék menetrendje a meglévő sorsolóval (a többi játék nélkül)
       var Vj = { beallit: Object.assign({}, V.beallit, { sorrend: 'program' }), jatekok: [j], csapatok: V.csapatok, sablonId: '', formatum: { tipus: 'kor' } };
+      if (V.kvota) { Vj.kvota = {}; Vj.kvota[j.id] = V.kvota[j.id]; Vj.elozmeny = V.elozmeny; }
       var g = general(Vj, { ido: Math.max(500, Math.floor(ido / n)), seed: opciok.seed == null ? null : opciok.seed + i });
       if (g.hiba) return { hiba: g.hiba };
       g.menetrend.forEach(function (kor) {
@@ -437,7 +459,8 @@
         var j0 = jt[kor.jatek];
         if (!j0 || !j0.egyszerre) { hibak.push((r + 1) + '. kör: ismeretlen egyszerre-játék.'); return; }
         egyszerreDb[kor.jatek] = (egyszerreDb[kor.jatek] || 0) + 1;
-        var szint = L.hatekonySzint(j0, K), vart = szint === 'csapat' ? T : U, latott = {};
+        var szint = L.hatekonySzint(j0, K), vart = 0, latott = {};
+        for (var x0 = 0; x0 < (szint === 'csapat' ? T : U); x0++) if (L.aktivE(V, (szint === 'csapat' ? 't' : 'u') + x0)) vart++;   // a kiszállók nem játszanak
         kor.meccsek.forEach(function (m) {
           var o = m.oldalak && m.oldalak[0];
           if (ids[m.id]) hibak.push('Ismétlődő azonosító: ' + m.id); ids[m.id] = 1;
@@ -486,11 +509,11 @@
     });
     // kvóták
     (V.jatekok || []).forEach(function (j) {
-      var h = Number(j.hanyszor) || 0;
-      if (j.egyszerre) { if ((egyszerreDb[j.id] || 0) !== h) hibak.push(j.nev + ': ' + h + ' forduló helyett ' + (egyszerreDb[j.id] || 0) + '.'); return; }
-      var szint = L.hatekonySzint(j, K), db = szint === 'csapat' ? T : U, rossz = 0;
-      for (var i = 0; i < db; i++) if ((kvota[j.id + '|' + (szint === 'csapat' ? 't' : 'u') + i] || 0) !== h) rossz++;
-      if (rossz) hibak.push(j.nev + ': ' + rossz + ' résztvevő nem ' + h + '-szer játszik.');
+      var h = Number(j.hanyszor) || 0, kv = V.kvota && V.kvota[j.id];   // kvóta: verseny közbeni újrasorsolás
+      if (j.egyszerre) { if (kv != null) h = Number(kv) || 0; if ((egyszerreDb[j.id] || 0) !== h) hibak.push(j.nev + ': ' + h + ' forduló helyett ' + (egyszerreDb[j.id] || 0) + '.'); return; }
+      var szint = L.hatekonySzint(j, K), db = szint === 'csapat' ? T : U, rossz = 0, pre = szint === 'csapat' ? 't' : 'u';
+      for (var i = 0; i < db; i++) if ((kvota[j.id + '|' + pre + i] || 0) !== (kv ? Number(kv[pre + i]) || 0 : h)) rossz++;
+      if (rossz) hibak.push(j.nev + ': ' + rossz + ' résztvevő nem ' + (kv ? 'a hátralévő számban' : h + '-szer') + ' játszik.');
     });
     var ism = 0; Object.keys(parok).forEach(function (k) { if (parok[k] > 1) ism += parok[k] - 1; });
     var ismCs = 0; Object.keys(egysCs).forEach(function (k) { if (egysCs[k] > 1) ismCs += egysCs[k] - 1; });
@@ -542,7 +565,8 @@
   function generalBajnoksag(V, opciok) {
     var rnd = veletlen(opciok.seed), j = V.jatekok[0], f = V.formatum, palyak = Math.max(1, Number(j.palyak) || 1);
     var cfgSzeru = { beallit: V.beallit, jatekok: V.jatekok, csapatok: V.csapatok };
-    var S = kever(L.resztvevoOldalak(cfgSzeru), rnd), N = S.length;
+    // kiemelési sorrend: megadva (menet közbeni formátumváltásnál az eddigi tabella), különben sorsolt
+    var S = opciok.seedek ? opciok.seedek.filter(function (o) { return L.aktivE(cfgSzeru, o); }) : kever(L.resztvevoOldalak(cfgSzeru), rnd), N = S.length;
     var terv = bajnoksagTerv(N, f);
     if (terv.hiba) return { hiba: terv.hiba };
     var korok = [], ag = { tipus: f.tipus, bronz: !!f.bronz, csoportok: null, tovabb: null, seedek: null, Q: terv.Q, B: terv.B, eronyerok: [] };
@@ -665,7 +689,236 @@
   // Csapatok véletlen sorrendbe (sorsolás)
   function csapatSorsolas(csapatok, rnd) { return kever(csapatok.slice(), rnd || Math.random); }
 
-  var Sorsolo = { feladat: feladat, general: general, ellenor: ellenor, csapatSorsolas: csapatSorsolas,
+  // ---------------------------------------------------------
+  // Játékonkénti formátum többjátékos versenyben
+  // A kieséses / csoportkörös játék külön körökben megy (a továbbjutók előre nem ismertek,
+  // így más játékkal egy körben valaki két helyre kerülhetne). Program-sorrendnél a körmérkőzéses
+  // játékok után jönnek a lista sorrendjében, „Ahogy beírtam”-nál a lista szerinti helyükön.
+  // ---------------------------------------------------------
+  function formatumosE(j) { return j.tipus === 'parharc' && !j.egyszerre && !!j.formatum && (j.formatum.tipus === 'kieses' || j.formatum.tipus === 'csoport'); }
+  function formatumBlokk(V, j, opciok, mag) {
+    var g = generalBajnoksag({ beallit: V.beallit, jatekok: [j], csapatok: V.csapatok, formatum: j.formatum }, { seed: opciok.seed == null ? null : opciok.seed + mag, seedek: opciok.seedek && opciok.seedek[j.id] });
+    if (g.hiba) return { hiba: j.nev + ': ' + g.hiba };
+    return g;
+  }
+  // körök átszámozása (az azonosító a kör sorszámával kezdődik), a W:/L: hivatkozásokkal együtt
+  function atszamoz(korok, kezdo) {
+    var atnev = {};
+    korok.forEach(function (k, x) { k.meccsek.forEach(function (m) { var uid = (kezdo + x + 1) + m.id.slice(m.id.indexOf('-')); if (uid !== m.id) atnev[m.id] = uid; m.id = uid; }); });
+    korok.forEach(function (k) { k.meccsek.forEach(function (m) { m.oldalak = m.oldalak.map(function (o) { return /^[WL]:/.test(o) && atnev[o.slice(2)] ? o.charAt(0) + ':' + atnev[o.slice(2)] : o; }); }); });
+    return atnev;
+  }
+  function generalFormatummal(V, opciok) {
+    var korJ = V.jatekok.filter(function (j) { return !formatumosE(j); }), hibak = [], figy = [], agrajzok = {};
+    var alap = korJ.length ? general(Object.assign({}, V, { jatekok: korJ, formatum: { tipus: 'kor' } }), opciok) : { menetrend: [], jelentes: { hibak: [], figyelmeztetesek: [] } };
+    if (alap.hiba) return alap;
+    hibak = hibak.concat(alap.jelentes.hibak); figy = figy.concat(alap.jelentes.figyelmeztetesek);
+    var refPerc = (alap.menetrend.filter(function (k) { return k.tipus === 'allomas'; })[0] || {}).perc;
+    var blokk = {};
+    for (var i = 0; i < V.jatekok.length; i++) {
+      var j = V.jatekok[i];
+      if (!formatumosE(j)) continue;
+      var g = formatumBlokk(V, j, opciok, 100 + i);
+      if (g.hiba) return g;
+      hibak = hibak.concat(g.jelentes.hibak); figy = figy.concat(g.jelentes.figyelmeztetesek);
+      agrajzok[j.id] = g.agrajz;
+      blokk[j.id] = g.menetrend.map(function (k) { if (refPerc) k.perc = refPerc; return k; });
+    }
+    var korok = [];
+    if (sorbanE(V)) V.jatekok.forEach(function (j) { korok = korok.concat(blokk[j.id] || alap.menetrend.filter(function (k) { return k.meccsek.length && k.meccsek[0].jatek === j.id; })); });
+    else { korok = alap.menetrend.slice(); V.jatekok.forEach(function (j) { if (blokk[j.id]) korok = korok.concat(blokk[j.id]); }); }
+    atszamoz(korok, 0);
+    // az ágrajz kezdő köre (a játék első köre)
+    Object.keys(agrajzok).forEach(function (id) { agrajzok[id].kezd = 1 + korok.findIndex(function (k) { return k.meccsek.some(function (m) { return m.jatek === id; }); }); });
+    var osszPerc = korok.reduce(function (sum, k) { return sum + (k.perc || 0) + (Number(V.beallit.valtasPerc) || 0); }, 0);
+    return { menetrend: korok, agrajzok: agrajzok, forras: 'generalt',
+      jelentes: { hibak: hibak, figyelmeztetesek: figy, korok: korok.length, allomasKorok: korok.filter(function (k) { return k.tipus !== 'egyszerre'; }).length, osszPerc: osszPerc, pihenoMin: 0, pihenoMax: 0 } };
+  }
+
+  // ---------------------------------------------------------
+  // Verseny közbeni módosítás: a lejátszott körök és a folyamatban lévő kör maradnak,
+  // a hátralévő köröket a program az új beállítás szerint állítja össze.
+  //  - ami a régi tervből még hátravan („maradék”) és ami új („extra”: új játék, több kör)
+  //  - helye: 'most' = az extra jön előbb, 'vegen' = a maradék után
+  // vissza: { menetrend, jelentes, ujKorok } vagy { hiba }
+  // ---------------------------------------------------------
+  function folytatas(regi, V, beirasok, opciok) {
+    opciok = opciok || {};
+    var kor = Number(regi.kor) || 0, K = L.egysegSzam(V.beallit), T = V.csapatok.length, i;
+    var masol = function (x) { return JSON.parse(JSON.stringify(x)); };
+    var szint = function (j) { return L.hatekonySzint(j, K); };
+    // egyjátékos bajnokságnál a formátum a verseny szintjén van: itt a játékra tesszük
+    V = Object.assign({}, V, { jatekok: V.jatekok.map(function (j) {
+      var n = masol(j);
+      if (V.jatekok.length === 1 && !n.formatum && V.formatum && V.formatum.tipus !== 'kor' && n.tipus === 'parharc' && !n.egyszerre) n.formatum = masol(V.formatum);
+      return n;
+    }) });
+    var rj = L.jatekTar(regi), uj = {};
+    V.jatekok.forEach(function (j) { uj[j.id] = j; });
+    // a régi ágrajzok (a régi egyjátékos is)
+    var regiAg = function (id) { return (regi.agrajzok && regi.agrajzok[id]) || (regi.agrajz && regi.jatekok[0] && regi.jatekok[0].id === id ? regi.agrajz : null); };
+    var fmtUj = {}, fmtRegi = {}, fmtMarad = {}, fmtUjra = {};
+    // létszámváltozás (új csapat / játékos, kiszállás): minden hátralévő újra összeáll
+    var letszamValt = (regi.csapatok || []).length !== V.csapatok.length || V.csapatok.some(function (c, t) { return !!c.ki !== !!((regi.csapatok[t] || {}).ki); });
+    V.jatekok.forEach(function (j) {
+      var ra = regiAg(j.id), f = j.formatum || {};
+      fmtUj[j.id] = formatumosE(j); fmtRegi[j.id] = !!ra;
+      if (fmtUj[j.id]) {
+        var r1 = rj[j.id];
+        fmtMarad[j.id] = !letszamValt && !!ra && ra.tipus === f.tipus && (f.tipus !== 'csoport' || (Number(ra.csoportok ? ra.csoportok.length : 0) === Number(f.csoportok) && Number(ra.tovabb) === Number(f.tovabb))) && r1 && Number(r1.palyak) === Number(j.palyak);
+        fmtUjra[j.id] = !fmtMarad[j.id];
+      }
+    });
+    // a lejátszott és a folyamatban lévő kör: a törölt játékok meccsei nélkül, a kiesés feloldott résztvevőivel
+    var felold = {};
+    L.meccsLista(regi, beirasok).forEach(function (m) { felold[m.id] = m.oldalak; });
+    var fagyott = masol((regi.menetrend || []).slice(0, kor)).map(function (k) {
+      k.meccsek = k.meccsek.filter(function (m) { return uj[m.jatek]; }).map(function (m) {
+        m.oldalak = (felold[m.id] || m.oldalak).slice();
+        if (fmtUjra[m.jatek] || (fmtRegi[m.jatek] && !fmtUj[m.jatek])) delete m.csoport;   // a régi csoportbeosztás már nem él
+        return m;
+      });
+      if (k.tipus === 'egyszerre' && !uj[k.jatek]) { k.tipus = 'allomas'; delete k.jatek; }
+      return k;
+    });
+    var cnt = {}, egyDb = {}, elozmeny = [];
+    fagyott.forEach(function (k) {
+      if (k.tipus === 'egyszerre') egyDb[k.jatek] = (egyDb[k.jatek] || 0) + 1;
+      k.meccsek.forEach(function (m) {
+        cnt[m.jatek] = cnt[m.jatek] || {};
+        if (k.tipus !== 'egyszerre') m.oldalak.forEach(function (o) { cnt[m.jatek][o] = (cnt[m.jatek][o] || 0) + 1; });
+        if (m.oldalak.length === 2 && L.valodiOldal(m.oldalak[0]) && L.valodiOldal(m.oldalak[1])) elozmeny.push(m.oldalak.slice());
+      });
+    });
+    // lejátszott játék típusa, szintje nem változhat (a régi eredmények értelmetlenek lennének)
+    for (i = 0; i < V.jatekok.length; i++) {
+      var j = V.jatekok[i], r0 = rj[j.id];
+      if (!r0 || !cnt[j.id]) continue;
+      if (r0.tipus !== j.tipus || szint(r0) !== szint(j) || !!r0.egyszerre !== !!j.egyszerre)
+        return { hiba: j.nev + ': már van lejátszott meccse, ezért a típusa és a szintje nem változhat. Vegyél fel helyette új játékot.' };
+    }
+    // a régi terv hátralévő része: törölt játékok és az újra felépülő kieséses játékok nélkül
+    var jatekE = function (k) { return k.tipus === 'egyszerre' ? k.jatek : (k.meccsek[0] || {}).jatek; };
+    var regiJovo = masol((regi.menetrend || []).slice(kor)).map(function (k) {
+      k.meccsek = k.meccsek.filter(function (m) { return uj[m.jatek] && !fmtUjra[m.jatek] && !(fmtRegi[m.jatek] && !fmtUj[m.jatek]); });
+      return k;
+    }).filter(function (k) { return k.meccsek.length && (k.tipus !== 'egyszerre' || uj[k.jatek]); });
+    // bronzmeccs be/ki egy megmaradó ágrajzban
+    var agrajzok = {};
+    V.jatekok.forEach(function (j) {
+      if (!fmtMarad[j.id]) return;
+      var ag = masol(regiAg(j.id)); ag.kezd = ag.kezd || 1; agrajzok[j.id] = ag;
+      var kell = !!(j.formatum || {}).bronz;
+      if (kell === !!ag.bronz) return;
+      ag.bronz = kell;
+      var bronzKor = regiJovo.findIndex(function (k) { return k.meccsek.some(function (m) { return m.jatek === j.id && m.cimke === 'Bronzmeccs'; }); });
+      if (!kell) { if (bronzKor >= 0) regiJovo[bronzKor].meccsek = regiJovo[bronzKor].meccsek.filter(function (m) { return !(m.jatek === j.id && m.cimke === 'Bronzmeccs'); }); return; }
+      var elo = (regi.menetrend || []).reduce(function (l, k, r) { return r + 1 >= ag.kezd ? l.concat(k.meccsek.filter(function (m) { return m.jatek === j.id && k.szakasz === 'Elődöntő'; })) : l; }, []);
+      if (elo.length !== 2) { ag.bronz = false; return; }
+      var dontoKor = regiJovo.findIndex(function (k) { return k.meccsek.some(function (m) { return m.jatek === j.id && m.cimke === 'Döntő'; }); });
+      var perc = (regiJovo[dontoKor] || regiJovo[0] || (regi.menetrend || [])[0] || {}).perc || 10;
+      regiJovo.splice(Math.max(0, dontoKor), 0, { tipus: 'kieses', szakasz: 'Döntő', perc: perc, meccsek: [{ id: '0-' + j.id + '-0', jatek: j.id, palya: 0, oldalak: ['L:' + elo[0].id, 'L:' + elo[1].id], cimke: 'Bronzmeccs' }] });
+    });
+    regiJovo = regiJovo.filter(function (k) { return k.meccsek.length; });
+    var jovo = {}, jovoEgy = {};
+    regiJovo.forEach(function (k) {
+      if (k.tipus === 'egyszerre') { jovoEgy[k.jatek] = (jovoEgy[k.jatek] || 0) + 1; return; }
+      k.meccsek.forEach(function (m) { if (fmtUj[m.jatek]) return; jovo[m.jatek] = jovo[m.jatek] || {}; m.oldalak.forEach(function (o) { jovo[m.jatek][o] = (jovo[m.jatek][o] || 0) + 1; }); });
+    });
+    // körmérkőzéses játékok: marad-e a régi terv (nincs szerkezeti változás, sehol nem csökken a hátralévő szám)
+    var rb = regi.beallit || {}, sorrendValt = (rb.sorrend || 'program') !== (V.beallit.sorrend || 'program') ||
+      (V.beallit.sorrend === 'beirt' && regi.jatekok.map(function (x) { return x.id; }).filter(function (id) { return uj[id]; }).join() !== V.jatekok.filter(function (x) { return rj[x.id]; }).map(function (x) { return x.id; }).join());
+    var marad = !sorrendValt && !letszamValt, maradek = {}, extra = {}, vanExtra = false, parFigy = [];
+    V.jatekok.forEach(function (j) {
+      if (fmtUj[j.id]) return;
+      var r1 = rj[j.id], H = Math.max(0, Number(j.hanyszor) || 0);
+      if (r1 && (Number(r1.palyak) !== Number(j.palyak) || r1.tipus !== j.tipus || szint(r1) !== szint(j) || !!r1.egyszerre !== !!j.egyszerre || (j.egyszerre && Number(r1.perc) !== Number(j.perc)))) marad = false;
+      if (j.egyszerre) {
+        var hatra = Math.max(0, H - (egyDb[j.id] || 0)), jv = jovoEgy[j.id] || 0;
+        if (hatra < jv) marad = false;
+        maradek[j.id] = Math.min(jv, hatra); extra[j.id] = hatra - maradek[j.id];
+        if (letszamValt) { maradek[j.id] += extra[j.id]; extra[j.id] = 0; }
+        if (extra[j.id]) vanExtra = true;
+        return;
+      }
+      var cs2 = szint(j) === 'csapat', db = cs2 ? T : T * K;
+      maradek[j.id] = {}; extra[j.id] = {};
+      // „mindenki mindenki ellen” (hányszor = az aktív ellenfelek száma): a hátralévő = a még le nem játszott aktív ellenfelek
+      var aktT = V.csapatok.filter(function (c) { return !c.ki; }).length, rr = j.tipus === 'parharc' && H === (cs2 ? aktT - 1 : (aktT - 1) * K);
+      var volt = {}, csp = function (q) { return cs2 ? Number(q.slice(1)) : Math.floor(Number(q.slice(1)) / K); };
+      if (rr) fagyott.forEach(function (k) { k.meccsek.forEach(function (m) { if (m.jatek === j.id && m.oldalak.length === 2) { volt[m.oldalak[0] + '|' + m.oldalak[1]] = 1; volt[m.oldalak[1] + '|' + m.oldalak[0]] = 1; } }); });
+      for (var x = 0; x < db; x++) {
+        var o = (cs2 ? 't' : 'u') + x, h2 = L.aktivE(V, o) ? Math.max(0, H - ((cnt[j.id] || {})[o] || 0)) : 0, jv2 = (jovo[j.id] || {})[o] || 0;
+        if (rr && L.aktivE(V, o)) { h2 = 0; for (var y = 0; y < db; y++) { var p2 = (cs2 ? 't' : 'u') + y; if (y !== x && L.aktivE(V, p2) && csp(p2) !== csp(o) && !volt[o + '|' + p2]) h2++; } }
+        if (h2 < jv2) marad = false;
+        maradek[j.id][o] = Math.min(jv2, h2); extra[j.id][o] = h2 - maradek[j.id][o];
+        // létszámváltozásnál egy blokk: az új játékosnak a régiekkel kell játszania
+        if (letszamValt) { maradek[j.id][o] += extra[j.id][o]; extra[j.id][o] = 0; }
+        if (extra[j.id][o]) vanExtra = true;
+      }
+      // páratlan hátralévő meccsszám (pl. valaki kiszállt, akivel már játszott valaki): ezen a „hányszor” nem segít,
+      // ezért a legkevesebb meccset kapó aktív résztvevő egy plusz meccset kap – ez a mentés előtti összegzésben látszik
+      if (j.tipus === 'parharc') {
+        var ossz = 0, leg = null;
+        Object.keys(maradek[j.id]).forEach(function (q) {
+          var n2 = maradek[j.id][q] + extra[j.id][q]; ossz += n2;
+          if (!L.aktivE(V, q)) return;
+          var tel = n2 + ((cnt[j.id] || {})[q] || 0);
+          if (!leg || tel < leg.tel) leg = { o: q, tel: tel };
+        });
+        if (ossz % 2 && leg) {
+          if (letszamValt) maradek[j.id][leg.o]++; else { extra[j.id][leg.o]++; vanExtra = true; }
+          parFigy.push(j.nev + ': ' + L.oldalNev(V, leg.o) + ' egy plusz meccset kap, hogy kijöjjön a párosítás');
+        }
+      }
+    });
+    var refPerc = ((regi.menetrend || []).filter(function (k) { return k.tipus === 'allomas'; })[0] || {}).perc || L.allomasPerc(V.beallit, V.jatekok, 1);
+    var hibak = [], figy = parFigy;
+    function blokk(kv, elozo, mag) {
+      var jl = V.jatekok.filter(function (j) { if (fmtUj[j.id]) return false; var q = kv[j.id]; return j.egyszerre ? q > 0 : Object.keys(q).some(function (o) { return q[o] > 0; }); });
+      if (!jl.length) return [];
+      var Vb = { nev: V.nev, beallit: V.beallit, jatekok: jl, csapatok: V.csapatok, sablonId: '', formatum: { tipus: 'kor' }, kvota: {}, elozmeny: elozo };
+      jl.forEach(function (j) { Vb.kvota[j.id] = kv[j.id]; });
+      var g = general(Vb, { ido: opciok.ido || 2500, seed: opciok.seed == null ? null : opciok.seed + mag });
+      if (g.hiba) throw new Error(g.hiba);
+      hibak = hibak.concat(g.jelentes.hibak); figy = figy.concat(g.jelentes.figyelmeztetesek);
+      return g.menetrend.map(function (k) { if (k.tipus === 'allomas') k.perc = refPerc; return k; });
+    }
+    // kieséses / csoportkörös játék új ágrajza: a kiemelés az eddigi meccsei szerinti tabella
+    var u = L.utolsoBeirasok(beirasok), lejatszott = L.meccsLista(regi, beirasok).filter(function (m) { return m.kor <= kor; });
+    function ujAgrajz(j, mag) {
+      var lev = szint(j) === 'csapat', oldalak = [];
+      for (var x = 0; x < (lev ? T : T * K); x++) oldalak.push((lev ? 't' : 'u') + x);
+      var sajat = lejatszott.filter(function (m) { return m.jatekId === j.id && m.jatek && m.jatek.tipus === 'parharc' && L.meccsKesz(m); });
+      var seedek = sajat.length ? L.tabellaSzamol(regi, sajat, u, oldalak).sorok.map(function (r) { return r.oldal; }) : null;
+      var sd = {}; if (seedek) sd[j.id] = seedek;
+      var g = formatumBlokk(V, j, { seed: opciok.seed, seedek: sd }, 200 + mag);
+      if (g.hiba) throw new Error(g.hiba);
+      hibak = hibak.concat(g.jelentes.hibak); figy = figy.concat(g.jelentes.figyelmeztetesek);
+      agrajzok[j.id] = g.agrajz;
+      return g.menetrend.map(function (k) { k.perc = refPerc; return k; });
+    }
+    var parjai = function (l) { var p = []; l.forEach(function (k) { k.meccsek.forEach(function (m) { if (m.oldalak.length === 2 && L.valodiOldal(m.oldalak[0])) p.push(m.oldalak.slice()); }); }); return p; };
+    var mB, eB, fB = [];
+    try {
+      // maradék: változatlan körmérkőzéses terv (a megmaradó kieséses körökkel együtt, eredeti sorrendben), vagy újrasorsolva
+      mB = marad ? regiJovo : blokk(maradek, elozmeny, 1).concat(regiJovo.filter(function (k) { return fmtUj[jatekE(k)]; }));
+      eB = vanExtra ? blokk(extra, elozmeny.concat(opciok.helye === 'most' ? [] : parjai(mB)), 2) : [];
+      V.jatekok.forEach(function (j, x) { if (fmtUjra[j.id]) fB = fB.concat(ujAgrajz(j, x)); });
+    } catch (e) { return { hiba: e.message }; }
+    var ujResz = eB.concat(fB), jovoUj = opciok.helye === 'most' ? ujResz.concat(mB) : mB.concat(ujResz);
+    atszamoz(jovoUj, kor);
+    // az új ágrajzok kezdő köre
+    V.jatekok.forEach(function (j) {
+      if (!fmtUjra[j.id]) return;
+      var x = jovoUj.findIndex(function (k) { return k.meccsek.some(function (m) { return m.jatek === j.id; }); });
+      agrajzok[j.id].kezd = kor + x + 1;
+    });
+    return { menetrend: fagyott.concat(jovoUj), agrajzok: agrajzok, jelentes: { hibak: hibak, figyelmeztetesek: figy }, ujKorok: jovoUj.length,
+      maradt: marad && !fB.length, extraKorok: ujResz.length };
+  }
+
+  var Sorsolo = { feladat: feladat, general: general, ellenor: ellenor, csapatSorsolas: csapatSorsolas, folytatas: folytatas,
     bajnoksagTerv: bajnoksagTerv, generalBajnoksag: generalBajnoksag, ellenorBajnoksag: ellenorBajnoksag, korbeVer: korbeVer };
   if (typeof module !== 'undefined' && module.exports) module.exports = Sorsolo;
   else g.Sorsolo = Sorsolo;

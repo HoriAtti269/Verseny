@@ -247,7 +247,7 @@
     var c = cfg(), cim = oldal.charAt(0) === 't' ? 'AZ EGÉSZ CSAPAT' : (K() > 1 ? L.oldalRovidNev(c, oldal).toUpperCase() + (sajat ? ' (TI)' : ' (CSAPATTÁRS)') : 'TI');
     var tg = L.tagNevek(c, oldal);
     var fej = '<div class="sor"><span class="kicsi">' + esc(cim) + '</span>';
-    if (!m) return '<div class="kartya">' + fej + '<span class="cimke ures">' + (c.agrajz ? 'nincs meccs' : 'pihenő') + '</span></div>' + (tg && K() > 1 ? '<span class="tagok">' + esc(tg) + '</span>' : '') + '<div class="cim" style="font-size:20px">' + (c.agrajz ? 'Ebben a körben nem játszotok' : 'Ebben a körben pihentek') + '</div></div>';
+    if (!m) return '<div class="kartya">' + fej + '<span class="cimke ures">' + (L.bajnoksagE(c) && L.agrajzFor(c) ? 'nincs meccs' : 'pihenő') + '</span></div>' + (tg && K() > 1 ? '<span class="tagok">' + esc(tg) + '</span>' : '') + '<div class="cim" style="font-size:20px">' + (L.bajnoksagE(c) && L.agrajzFor(c) ? 'Ebben a körben nem játszotok' : 'Ebben a körben pihentek') + '</div></div>';
     var st = L.meccsAllapot(m, u);
     var h = '<div class="kartya">' + fej + allapotCimke(st, m) + '</div>';
     if (tg && Number(c.beallit.meret) > 1) h += '<span class="tagok">' + esc(tg) + '</span>';
@@ -432,6 +432,7 @@
     var hm = a.egyeni && a.osszesites === 'helyezes';
     if (A.allasFul.indexOf('j:') === 0) {
       var t = a.jatekTablak.filter(function (x) { return 'j:' + x.jatekId === A.allasFul; })[0];
+      if (t.ko) return h + koFulHtml(t, a);
       if (t.tipus === 'parharc') return h + parharcFulHtml(t, a);
       var hely = t.ertek === 'helyezes' && !hm, bemod = (jatek(t.jatekId).eredmeny || {}).mod === 'helyezes';
       var gr = 'grid-template-columns:26px minmax(0,1fr) 70px' + (hely ? ' 46px' : '');
@@ -450,7 +451,7 @@
       var gr3 = ' style="grid-template-columns:26px minmax(0,1fr) 60px"';
       h += '<div class="tabla"><div class="tsor fej2"' + gr3 + '><span>#</span><span>JÁTÉKOS</span><span class="j">' + (hm ? 'Σ HELY' : 'P') + '</span></div>';
       a.csapatok.forEach(function (x) {
-        var resz = x.reszek.map(function (r) { return r.nev + ' ' + (r.hely ? r.hely + '.' : '–') + (!hm && r.pont != null ? ' (' + szamF(r.pont) + ')' : ''); }).join(' · ');
+        var resz = (x.ki ? 'kiszállt · ' : '') + x.reszek.map(function (r) { return r.nev + ' ' + (r.hely ? r.hely + '.' : '–') + (!hm && r.pont != null ? ' (' + szamF(r.pont) + ')' : ''); }).join(' · ');
         h += '<div class="tsor' + (x.hely <= 3 ? ' dobogo' : '') + '"' + gr3 + '><span class="hely">' + x.hely + '</span><span class="nev">' + esc(x.nev) + '<small>' + esc(resz) + '</small></span>' +
           '<span class="j"><b>' + (hm ? x.helyOssz : szamF(x.pont)) + '</b></span></div>';
       });
@@ -465,11 +466,32 @@
     lista.forEach(function (x, i) {
       var dob = i < 3;
       h += '<div class="tsor' + (dob ? ' dobogo' : '') + '"' + gr2 + '><span class="hely">' + (i + 1) + '</span><span class="nev">' + esc(x.nev) +
-        (A.allasFul === 'egyseg' ? '<small>' + esc(x.csapatNev + (x.tagok ? ' · ' + x.tagok : '')) + '</small>' : (!egyeni && x.tagok ? '<small>' + esc(x.tagok) + '</small>' : '')) + '</span>' +
+        (A.allasFul === 'egyseg' ? '<small>' + esc(x.csapatNev + (x.tagok ? ' · ' + x.tagok : '')) + '</small>' : (!egyeni && (x.tagok || x.ki) ? '<small>' + esc((x.ki ? 'kiszállt' + (x.tagok ? ' · ' : '') : '') + x.tagok) + '</small>' : '')) + '</span>' +
         '<span class="j"><b>' + szamF(x.pont) + '</b></span>' + (parharc ? '<span class="j">' + x.gy + '</span><span class="j" style="color:var(--szurke)">' + szamF(x.fol.toFixed(2)) + '</span>' : '') + '</div>';
     });
     h += '</div>';
     if (parharc) h += '<span class="kicsi" style="text-transform:none">P = pont (győzelem 3, döntetlen 1) · GY = győzelem · FÖL = fölény-index · holtversenynél: GY, FÖL, Buchholz</span>';
+    return h;
+  }
+  // Kieséses / csoportkörös játék füle: helyezések, csoportok, ágrajz
+  function koFulHtml(t, a) {
+    var c = cfg(), ba = L.bajnoksagAllas(c, A.szerver.beirasok, t.jatekId), gr = 'grid-template-columns:30px minmax(0,1fr)', h = '';
+    h += '<div class="tabla"><div class="tsor fej2" style="' + gr + '"><span>#</span><span>' + esc(t.nev.toUpperCase()) + ' – HELYEZÉS</span></div>';
+    t.sorok.forEach(function (r) {
+      var kis = [];
+      if (r.tagok && Number(c.beallit.meret) > 1) kis.push(r.tagok);
+      if (a.egyeni && a.osszesites !== 'helyezes' && r.hp != null) kis.push('→ ' + szamF(r.hp) + ' pont az összesítésbe');
+      h += '<div class="tsor" style="' + gr + '"><span class="hely">' + (r.hely || '–') + '</span><span class="nev">' + esc(r.nev) + (kis.length ? '<small>' + esc(kis.join(' · ')) + '</small>' : '') + '</span></div>';
+    });
+    h += '</div>';
+    ba.tabellak.forEach(function (tb) {
+      h += '<div class="sotet" style="gap:4px"><span class="kicsi">' + esc(tb.nev) + (tb.tovabb ? ' · tovább: ' + tb.tovabb : '') + '</span>' + tb.sorok.map(function (r, i) {
+        return '<span style="font-size:14px' + (tb.tovabb && i < tb.tovabb ? ';font-weight:700;color:#8FD3A8' : '') + '">' + (i + 1) + '. ' + esc(r.nev) + ' – ' + r.pont + ' p (' + r.gy + '-' + r.d + '-' + r.v + ')</span>';
+      }).join('') + '</div>';
+    });
+    if (ba.agrajz) h += agrajzHtml(ba.agrajz);
+    h += '<div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">' + t.db + ' / ' + t.ossz + ' meccs kész. ' +
+      (!a.egyeni ? 'Tájékoztató – az összesítettbe a meccspontok (3-1-0) kerülnek.' : a.osszesites === 'helyezes' ? 'A végső helyezés az utolsó meccs után kerül az összesítettbe.' : 'A helyezés szerinti pont az utolsó meccs után kerül az összesítettbe.') + '</span></div>';
     return h;
   }
   // Egy párharc-játék saját tabellája (a játék fülén)
@@ -503,7 +525,7 @@
       for (var r = 1; r <= R; r++) {
         var m = lista.filter(function (x) { return x.kor === r && (x.oldalak.indexOf(o) >= 0 || x.oldalak.indexOf('t' + t) >= 0); })[0];
         var fuggoKor = !m && lista.some(function (x) { return x.kor === r && !L.meccsKesz(x); });
-        var szoveg = !m ? (fuggoKor ? 'Kieséses kör – ha továbbjutsz' : c.agrajz ? 'Nem játszol' : 'Pihenő') : m.jatek.tipus === 'parharc' ? 'vs. ' + L.oldalNev(c, m.oldalak[0] === o || m.oldalak[0] === 't' + t ? m.oldalak[1] : m.oldalak[0]) : (m.oldalak[0].charAt(0) === 't' && K() > 1 ? 'Az egész csapat' : '');
+        var szoveg = !m ? (fuggoKor ? 'Kieséses kör – ha továbbjutsz' : L.bajnoksagE(c) && L.agrajzFor(c) ? 'Nem játszol' : 'Pihenő') : m.jatek.tipus === 'parharc' ? 'vs. ' + L.oldalNev(c, m.oldalak[0] === o || m.oldalak[0] === 't' + t ? m.oldalak[1] : m.oldalak[0]) : (m.oldalak[0].charAt(0) === 't' && K() > 1 ? 'Az egész csapat' : '');
         h += '<div class="meccssor"' + (r === c.kor ? ' style="background:var(--var-h);margin:0 -14px;padding:12px 14px"' : '') + '><div class="bal"><b>' + r + '. kör · ' + esc(m ? m.jatek.nev + palyaSzoveg(m) : '—') + '</b><span>' + esc(szoveg) + '</span></div></div>';
       }
       h += '</div>';
@@ -513,7 +535,7 @@
     var pihenok = [], U = c.csapatok.length * K();
     for (var u = 0; u < U; u++) {
       var van = lista.some(function (x) { return x.kor === k && (x.oldalak.indexOf('u' + u) >= 0 || x.oldalak.indexOf('t' + Math.floor(u / K())) >= 0); });
-      if (!van) pihenok.push(L.oldalNev(c, 'u' + u));
+      if (!van && L.aktivE(c, 'u' + u)) pihenok.push(L.oldalNev(c, 'u' + u));   // a kiszállók nem pihennek
     }
     if (pihenok.length) h += '<div class="uzenet info">Ebben a körben nem játszik: ' + esc(pihenok.join(', ')) + '</div>';
     return h;
@@ -590,66 +612,56 @@
     return '<label class="mezocim">' + cimke + '<input class="mezo" data-mod="' + esc(ut) + '"' + (szamE ? ' inputmode="numeric"' : '') + ' value="' + esc(ertek == null ? '' : ertek) + '"></label>';
   }
   function modositHtml() {
-    var M2 = A.M, V = M2.V, K2 = L.egysegSzam(V.beallit), egyeni = Number(V.beallit.meret) === 1, hm = egyeni && V.beallit.osszesites === 'helyezes', h = '';
-    var marad = V.jatekok.filter(function (j) { return !j._torol; }).length;
+    var M2 = A.M, V = A.V, K2 = L.egysegSzam(V.beallit), egyeni = Number(V.beallit.meret) === 1, h = '';
     h += '<div class="sor"><button class="gomb masod" data-akcio="modositBe">← Mégse</button><span class="kicsi">' + (M2.ujra ? 'Újrakezdés' : 'Folytatás') + '</span></div>';
-    h += '<h1>Módosítás</h1><div class="uzenet info">' + (M2.ujra ? 'Az eredmények törölve, a verseny az 1. körtől indul. A menetrend és a QR-kódok maradnak.' :
+    h += '<h1>Módosítás</h1><div class="uzenet info">' + (M2.ujra ? 'Az eredmények törölve, a verseny az 1. körtől indul. A QR-kódok maradnak.' :
       'Az eredmények megmaradnak, a verseny folytatódik. Játékos cseréjénél csak írd át a nevét.') + '</div>';
     h += mmezo('A VERSENY NEVE', 'nev', V.nev);
-    h += '<div class="kicsi">Játékok</div>';
-    V.jatekok.forEach(function (j) {
-      var e = j.eredmeny || {}, p = 'j.' + j.id + '.';
-      if (j._torol) {
-        h += '<div class="sotet"><div class="sor"><span style="text-decoration:line-through;font-weight:600">' + esc(j.nev) + '</span><button class="gomb masod" data-akcio="modJatek" data-ertek="' + esc(j.id) + '">Visszaállítás</button></div>' +
-          '<span style="font-size:13px;color:var(--szoveg2)">Mentéskor törlődik a meccseivel és az eredményeivel együtt.</span></div>';
-        return;
-      }
-      h += '<div class="kartya">' + mmezo('JÁTÉK NEVE', p + 'nev', j.nev);
-      if (j.tipus === 'pontgyujto') {
-        if (e.mod !== 'helyezes') h += mmezo('LEGNAGYOBB BEÍRHATÓ SZÁM', p + 'eredmeny.max', e.max, true);
-        h += mmezo(KERDES, p + 'eredmeny.cimke', e.cimke);
-        if (!hm && L.ertekMod(j) === 'helyezes') h += mmezo('AZ 1. HELYEZETT PONTJA (az utolsó 0)', p + 'maxPont', j.maxPont || 12, true);
-      } else {
-        if (e.mod === 'cel') h += mmezo(e.irany === 'le' ? 'KEZDŐPONT' : 'CÉL', p + 'eredmeny.cel', e.cel, true) + mmezo(KERDES, p + 'eredmeny.cimke', e.cimke);
-        else if (e.mod === 'tobb') h += mmezo('LEGNAGYOBB BEÍRHATÓ SZÁM', p + 'eredmeny.max', e.max, true) + mmezo(KERDES, p + 'eredmeny.cimke', e.cimke);
-        else if (e.szam) h += mmezo('MI A SZÁM', p + 'eredmeny.szam.cimke', e.szam.cimke) + mmezo('MAX.', p + 'eredmeny.szam.max', e.szam.max, true);
-        if (egyeni && !hm && marad > 1) h += mmezo('AZ 1. HELYEZETT PONTJA (az utolsó 0)', p + 'maxPont', j.maxPont || 12, true);
-      }
-      h += '<button class="gomb vesz" data-akcio="modJatek" data-ertek="' + esc(j.id) + '"' + (marad < 2 ? ' disabled' : '') + '>Játék törlése</button></div>';
-    });
-    h += '<div class="kicsi">' + (egyeni ? 'Játékosok' : 'Csapatok') + '</div>';
+    h += '<div class="kicsi">Játékok</div><span style="font-size:13px;color:var(--szoveg2)">Új játék, több kör („hányszor”), pályák, szabályok – minden állítható. A lejátszott és a folyamatban lévő kör marad, a hátralévő köröket a program állítja össze.</span>';
+    h += jatekListaHtml(V, K2);
+    if (L.bajnoksagE(V) && !A.szerkJatek) h += formatumHtml();
+    if (!A.szerkJatek) {
+      h += '<div class="kicsi">Az új körök helye (új játék, több kör)</div><div class="chipek">' +
+        [['most', 'Most következnek'], ['vegen', 'A végén']].map(function (o) { return '<button class="chip' + (M2.helye === o[0] ? ' akt' : '') + '" data-akcio="helye" data-ertek="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    }
+    h += '<div class="kicsi">' + (egyeni ? 'Játékosok' : 'Csapatok') + '</div><span style="font-size:13px;color:var(--szoveg2)">Beszállás és kiszállás menet közben is: az új ' + (egyeni ? 'játékos' : 'csapat') + ' új QR-kódot kap, a többieké marad. A kiszálló eredményei megmaradnak, új meccse nem lesz.</span>';
+    var kiGomb = function (c, t) { return '<button class="gomb ' + (c.ki ? 'vilagos' : 'vesz') + '" style="min-height:44px" data-akcio="modKi" data-ertek="' + t + '">' + (c.ki ? 'Visszavesz' : 'Kiszáll') + '</button>'; };
     if (egyeni) {
       h += '<div class="kartya">';
-      V.csapatok.forEach(function (c, t) { h += '<input class="mezo" aria-label="' + (t + 1) + '. játékos" data-mod="c.' + t + '.egyeni" value="' + esc(c.nev) + '" maxlength="30">'; });
-      h += '</div>';
-    } else V.csapatok.forEach(function (c, t) {
-      h += '<div class="kartya csapatkartya"><label class="mezocim">' + (t + 1) + '. CSAPAT NEVE<input class="mezo" data-mod="c.' + t + '.nev" value="' + esc(c.nev) + '" maxlength="30"></label><div class="' + (K2 > 1 ? 'racs2' : '') + '">';
-      c.egysegek.forEach(function (e, k) {
-        h += '<div class="parblokk">';
-        if (K2 > 1) h += '<label class="mezocim">' + (k + 1) + '. ' + egysegSzo(V.beallit).toUpperCase() + ' NEVE<input class="mezo" data-mod="c.' + t + '.e' + k + '.nev" value="' + esc(e.nev) + '" maxlength="30"></label>';
-        e.tagok.forEach(function (tg, i) { h += '<input class="mezo" aria-label="' + (i + 1) + '. tag" data-mod="c.' + t + '.e' + k + '.t' + i + '" value="' + esc(tg) + '" maxlength="40">'; });
-        h += '</div>';
+      V.csapatok.forEach(function (c, t) {
+        h += '<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center"><input class="mezo" aria-label="' + (t + 1) + '. játékos" placeholder="Új játékos neve" data-mod="c.' + t + '.egyeni" value="' + esc(c.nev) + '" maxlength="30"' + (c.ki ? ' style="text-decoration:line-through;opacity:.6"' : '') + '>' + kiGomb(c, t) + '</div>';
       });
-      h += '</div></div>';
-    });
-    h += '<div class="racs2"><button class="gomb masod" data-akcio="modositBe">Mégse</button><button class="gomb fo" data-akcio="modositMent"' + (A.kuld ? ' disabled' : '') + '>Mentés</button></div>';
-    if (M2.ujra) h += '<div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">Létszám, új játék, „hányszor” vagy pályaszám is változik? Ehhez új sorsolás és új QR-kódok kellenek.</span>' +
+      h += '</div><button class="gomb masod" data-akcio="modUj" style="border-style:dashed;color:var(--arany);border-color:var(--arany)">+ Új játékos</button>';
+    } else {
+      V.csapatok.forEach(function (c, t) {
+        h += '<div class="kartya csapatkartya"' + (c.ki ? ' style="opacity:.6"' : '') + '><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end"><label class="mezocim">' + (t + 1) + '. CSAPAT NEVE' + (c.ki ? ' · KISZÁLLT' : '') + '<input class="mezo" data-mod="c.' + t + '.nev" value="' + esc(c.nev) + '" maxlength="30"></label>' + kiGomb(c, t) + '</div><div class="' + (K2 > 1 ? 'racs2' : '') + '">';
+        c.egysegek.forEach(function (e, k) {
+          h += '<div class="parblokk">';
+          if (K2 > 1) h += '<label class="mezocim">' + (k + 1) + '. ' + egysegSzo(V.beallit).toUpperCase() + ' NEVE<input class="mezo" data-mod="c.' + t + '.e' + k + '.nev" value="' + esc(e.nev) + '" maxlength="30"></label>';
+          e.tagok.forEach(function (tg, i) { h += '<input class="mezo" aria-label="' + (i + 1) + '. tag" data-mod="c.' + t + '.e' + k + '.t' + i + '" value="' + esc(tg) + '" maxlength="40">'; });
+          h += '<div class="racs2"><button class="gomb vilagos" style="min-height:40px" data-akcio="modTag" data-ertek="' + t + '|' + k + '|1"' + (e.tagok.length >= 8 ? ' disabled' : '') + '>+ tag</button><button class="gomb vilagos" style="min-height:40px" data-akcio="modTag" data-ertek="' + t + '|' + k + '|-1"' + (e.tagok.length <= 1 ? ' disabled' : '') + '>− tag</button></div>';
+          h += '</div>';
+        });
+        h += '</div></div>';
+      });
+      h += '<button class="gomb masod" data-akcio="modUj" style="border-style:dashed;color:var(--arany);border-color:var(--arany)">+ Új csapat</button>';
+    }
+    h += '<div class="racs2"><button class="gomb masod" data-akcio="modositBe">Mégse</button><button class="gomb fo" data-akcio="modositMent"' + (A.kuld || A.szerkJatek ? ' disabled' : '') + '>Mentés</button></div>';
+    if (A.szerkJatek) h += '<span style="font-size:13px;color:var(--szoveg2);text-align:center">Mentés előtt zárd le a játék szerkesztését (Kész).</span>';
+    if (M2.ujra) h += '<div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">Létszám is változik? Ehhez új sorsolás és új QR-kódok kellenek.</span>' +
       '<button class="gomb vesz" data-akcio="teljesUjra">Teljes újrabeállítás (új sorsolás)</button></div>';
     return h;
   }
   function modNyit(ujra) {
     var c = cfg();
-    A.M = { ujra: ujra, V: { nev: c.nev, beallit: masol(c.beallit), jatekok: masol(c.jatekok), csapatok: masol(c.csapatok) } };
-    A.nezet = 'modosit'; A.javit = null; window.scrollTo(0, 0);
+    // a vázlat az A.V-be kerül, így a beállítás játékszerkesztője változatlanul használható
+    A.M = { ujra: ujra, helye: 'vegen' };
+    A.V = { nev: c.nev, sablonId: c.sablonId, beallit: masol(c.beallit), jatekok: masol(c.jatekok), csapatok: masol(c.csapatok), formatum: masol(c.formatum || { tipus: 'kor' }) };
+    A.szerkJatek = null; A.nezet = 'modosit'; A.javit = null; window.scrollTo(0, 0);
   }
   function modBeir(ut, el) {
-    var r = ut.split('.'), V = A.M.V, v = el.getAttribute('inputmode') === 'numeric' ? (parseInt(el.value, 10) || 0) : el.value;
+    var r = ut.split('.'), V = A.V, v = el.value;
     if (r[0] === 'nev') { V.nev = v; return; }
-    if (r[0] === 'j') {
-      var o = V.jatekok.filter(function (x) { return x.id === r[1]; })[0];
-      for (var i = 2; i < r.length - 1; i++) o = o[r[i]] = o[r[i]] || {};
-      o[r[r.length - 1]] = v; return;
-    }
     var c = V.csapatok[Number(r[1])];
     if (r[2] === 'egyeni') { c.nev = v; c.egysegek[0].tagok[0] = v; return; }
     if (r[2] === 'nev') { c.nev = v; return; }
@@ -674,9 +686,9 @@
   // =========================================================
   function bajnoksagHtml() {
     var c = cfg(), a = L.bajnoksagAllas(c, A.szerver.beirasok), fulek = [], h = '';
-    a.tabellak.forEach(function (t, i) { fulek.push(['t' + i, c.agrajz ? t.nev.replace(' csoport', ' csop.') : 'Tabella']); });
+    a.tabellak.forEach(function (t, i) { fulek.push(['t' + i, L.agrajzFor(c) ? t.nev.replace(' csoport', ' csop.') : 'Tabella']); });
     if (a.agrajz) fulek.push(['ag', 'Ágrajz']);
-    if (!fulek.some(function (f) { return f[0] === A.allasFul; })) A.allasFul = a.agrajz && (a.agrajz.csoportKesz || !c.agrajz.csoportok) ? 'ag' : fulek[0][0];
+    if (!fulek.some(function (f) { return f[0] === A.allasFul; })) A.allasFul = a.agrajz && (a.agrajz.csoportKesz || !a.agrajz.csoportos) ? 'ag' : fulek[0][0];
     if (fulek.length > 1) h += '<div class="fulek" style="overflow-x:auto">' + fulek.map(function (f) { return '<button data-akcio="allasFul" data-ertek="' + f[0] + '" class="' + (A.allasFul === f[0] ? 'akt' : '') + '">' + esc(f[1]) + '</button>'; }).join('') + '</div>';
     if (A.allasFul === 'ag') return h + agrajzHtml(a.agrajz);
     var t = a.tabellak[Number(A.allasFul.slice(1))], gr = 'grid-template-columns:22px minmax(0,1fr) 30px 58px 46px 42px';
@@ -700,7 +712,7 @@
       ag.vegeredmeny.forEach(function (v) { h += '<div class="sor"><span class="cim" style="font-size:' + (v.hely === 1 ? 22 : 17) + 'px">' + v.hely + '. ' + esc(L.oldalNev(c, v.oldal)) + '</span></div>'; });
       h += '</div>';
     }
-    if (c.agrajz.csoportok && !ag.csoportKesz) h += '<div class="uzenet info">A párosítás a csoportkör végén dől el.</div>';
+    if (ag.csoportos && !ag.csoportKesz) h += '<div class="uzenet info">A párosítás a csoportkör végén dől el.</div>';
     if (!ag.szakaszok.length) return h;
     var nevek = ag.szakaszok.map(function (x) { return x.nev; });
     if (nevek.indexOf(A.agSzakasz) < 0) {
@@ -813,10 +825,16 @@
   }
   // „Mindenki mindenki ellen”: hány meccs jut egy résztvevőre (a csapattárs nem lehet ellenfél)
   function mindenkiSzam(V, j) {
-    var be = L.csapatBeosztas(V.beallit.jatekosok, V.beallit.meret, V.beallit.maradek);
-    if (!be) return 1;
+    var db = csapatDb(V);
+    if (!db) return 1;
     var K2 = L.egysegSzam(V.beallit);
-    return Math.max(1, L.hatekonySzint(j, K2) === 'csapat' ? be.csapat - 1 : (be.csapat - 1) * K2);
+    return Math.max(1, L.hatekonySzint(j, K2) === 'csapat' ? db - 1 : (db - 1) * K2);
+  }
+  // Aktív csapatok (játékosok) száma: a tényleges lista (menet közben is), különben a létszámból
+  function csapatDb(V) {
+    if (V.csapatok && V.csapatok.length) return V.csapatok.filter(function (c) { return !c.ki; }).length;
+    var be = L.csapatBeosztas(V.beallit.jatekosok, V.beallit.meret, V.beallit.maradek);
+    return be ? be.csapat : 0;
   }
 
   function lepes2() {
@@ -876,6 +894,13 @@
 
   function lepes3() {
     var V = A.V, K2 = L.egysegSzam(V.beallit), h = '<h1>Játékok</h1>';
+    h += jatekListaHtml(V, K2);
+    if (L.bajnoksagE(V) && !A.szerkJatek) h += formatumHtml();
+    return h + tovabbGomb();
+  }
+  // Sorrend-választó (egyéni) + játéklista ↑↓-vel + Új játék – a beállításnál és a futó verseny módosításánál is
+  function jatekListaHtml(V, K2) {
+    var h = '';
     // egyéni versenynél választható: a program sorsolja a sorrendet, vagy a lista sorrendje szerint mennek egymás után
     if (Number(V.beallit.meret) === 1 && V.jatekok.length > 1 && !A.szerkJatek) {
       h += '<div class="kicsi">A játékok sorrendje</div>';
@@ -885,15 +910,14 @@
     }
     V.jatekok.forEach(function (j, i) {
       if (A.szerkJatek === j.id) { h += jatekSzerk(j, K2); return; }
-      var leir = [j.tipus === 'parharc' ? 'párharc' : 'pontgyűjtő', j.egyszerre ? 'mindenki egyszerre, ' + j.hanyszor + ' forduló' : j.palyak + ' pálya, ' + j.hanyszor + '×', K2 > 1 ? (j.szint === 'csapat' ? 'egész csapat' : egysegSzo(V.beallit)) : '', j.beiras === 'biro' ? 'bíró' : 'saját beírás'].filter(Boolean).join(' · ');
+      var leir = [j.tipus === 'parharc' ? 'párharc' : 'pontgyűjtő', j.egyszerre ? 'mindenki egyszerre, ' + j.hanyszor + ' forduló' : j.palyak + ' pálya, ' + (jatekFormatum(j) ? (jatekFormatum(j).tipus === 'csoport' ? 'csoport + kiesés' : 'kiesés') + (jatekFormatum(j).bronz ? ' + bronz' : '') : j.hanyszor + '×'), K2 > 1 ? (j.szint === 'csapat' ? 'egész csapat' : egysegSzo(V.beallit)) : '', j.beiras === 'biro' ? 'bíró' : 'saját beírás'].filter(Boolean).join(' · ');
       h += '<div style="display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;gap:6px">';
       h += '<button class="opcio" data-akcio="szerk" data-ertek="' + esc(j.id) + '"><span class="sor" style="width:100%"><span style="font-weight:700">' + esc(j.nev) + '</span><span style="color:var(--arany);font-size:13px">Szerk.</span></span><span style="font-size:12px;color:var(--halvany)">' + esc(leir) + '</span></button>';
       h += '<button class="gomb masod" style="padding:0" data-akcio="jatekMozgat" data-ertek="' + i + '|-1" aria-label="Feljebb"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
         '<button class="gomb masod" style="padding:0" data-akcio="jatekMozgat" data-ertek="' + i + '|1" aria-label="Lejjebb"' + (i === V.jatekok.length - 1 ? ' disabled' : '') + '>↓</button></div>';
     });
     h += '<button class="gomb masod" data-akcio="ujJatek" style="border-style:dashed;color:var(--arany);border-color:var(--arany)">+ Új játék</button>';
-    if (L.bajnoksagE(V) && !A.szerkJatek) h += formatumHtml();
-    return h + tovabbGomb();
+    return h;
   }
   function formatumHtml() {
     var V = A.V, f = V.formatum = V.formatum || { tipus: 'kor' }, N = L.resztvevoOldalak(V).length, h = '<h2>Formátum</h2>';
@@ -920,6 +944,21 @@
     return '<label class="mezocim">' + cimke + '<input class="mezo" data-jm="' + ut + '"' + (tipus === 'szam' ? ' inputmode="numeric"' : '') + ' value="' + esc(ertek == null ? '' : ertek) + '"></label>';
   }
   var KERDES = 'KÉRDÉS A BEÍRÁSNÁL (NEM KÖTELEZŐ)';
+  // Többjátékos versenyben a párharc-játék saját formátuma (egyjátékosnál a verseny formátuma: formatumHtml)
+  function jatekFormatum(j) { return A.V.jatekok.length > 1 && j.tipus === 'parharc' && !j.egyszerre && j.formatum && (j.formatum.tipus === 'kieses' || j.formatum.tipus === 'csoport') ? j.formatum : null; }
+  function jatekFormatumHtml(j) {
+    var f = jatekFormatum(j), h = '<span class="kicsi">FORMÁTUM</span><div class="racs3">' + jv('ftipus', 'kor', 'Körmérkőzés', !f) + jv('ftipus', 'kieses', 'Kiesés', f && f.tipus === 'kieses') + jv('ftipus', 'csoport', 'Csoport + kiesés', f && f.tipus === 'csoport') + '</div>';
+    if (!f) return h;
+    if (f.tipus === 'csoport') h += '<span class="kicsi">CSOPORTOK SZÁMA</span>' + lepteto('jf', 'csoportok', f.csoportok, 1, 16) + '<span class="kicsi">TOVÁBBJUTÓ CSOPORTONKÉNT</span>' + lepteto('jf', 'tovabb', f.tovabb, 1, 8);
+    h += '<div class="sor"><span style="font-weight:600">Bronzmeccs a 3. helyért</span>' + jv('fbronz', f.bronz ? 'false' : 'true', f.bronz ? 'Be' : 'Ki', !!f.bronz) + '</div>';
+    var db = csapatDb(A.V), K2 = L.egysegSzam(A.V.beallit);
+    var N = L.hatekonySzint(j, K2) === 'csapat' ? db : db * K2, t = SR.bajnoksagTerv(N, f);
+    if (t.hiba) return h + '<div class="uzenet hiba">' + esc(t.hiba) + '</div>';
+    var sor = [N + ' résztvevő'];
+    if (t.G) sor.push(t.G + ' csoport → ' + t.Q + ' továbbjutó');
+    sor.push('Ágrajz: ' + t.B + '-as, ' + t.koKorok + ' kieséses kör' + (t.eronyerok ? ', ' + t.eronyerok + ' erőnyerő' : ''));
+    return h + '<span class="tagok">' + esc(sor.join(' · ')) + '. A játék külön körökben megy, mert a továbbjutók előre nem ismertek. Helyezés: döntő 1–2., bronz 3–4., a kiesők a körük szerint.</span>';
+  }
   function jatekSzerk(j, K2) {
     var e = j.eredmeny || {}, h = '<div class="kartya" style="border:2px solid var(--arany)">';
     h += jmezo('JÁTÉK NEVE', 'nev', j.nev);
@@ -931,8 +970,13 @@
       // időmérés nélkül nincs „Perc / forduló” (a perc a háttérben marad, a szerver kéri)
       h += idoMeresE(A.V.beallit) ? '<div class="racs2">' + jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam') + jmezo('PERC / FORDULÓ', 'perc', j.perc, 'szam') + '</div>' : jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam');
     } else {
-      h += '<div class="racs2">' + jmezo('PÁLYÁK SZÁMA', 'palyak', j.palyak, 'szam') + jmezo('HÁNYSZOR JÁTSSZÁK', 'hanyszor', j.hanyszor, 'szam') + '</div>';
-      if (j.tipus === 'parharc') h += '<button class="gomb vilagos" data-akcio="mindenki">Mindenki mindenki ellen (' + mindenkiSzam(A.V, j) + '×)</button>';
+      // kieséses / csoportkörös játéknál a meccsek számát az ágrajz adja: nincs „hányszor”
+      if (jatekFormatum(j)) h += jmezo('PÁLYÁK SZÁMA', 'palyak', j.palyak, 'szam');
+      else {
+        h += '<div class="racs2">' + jmezo('PÁLYÁK SZÁMA', 'palyak', j.palyak, 'szam') + jmezo('HÁNYSZOR JÁTSSZÁK', 'hanyszor', j.hanyszor, 'szam') + '</div>';
+        if (j.tipus === 'parharc') h += '<button class="gomb vilagos" data-akcio="mindenki">Mindenki mindenki ellen (' + mindenkiSzam(A.V, j) + '×)</button>';
+      }
+      if (j.tipus === 'parharc' && A.V.jatekok.length > 1) h += jatekFormatumHtml(j);
     }
     h += '<span class="kicsi">MIT ÍRNAK BE</span>';
     var egy = Number(A.V.beallit.meret) === 1, hm = egy && A.V.beallit.osszesites === 'helyezes';
@@ -994,6 +1038,8 @@
       case 'pjobb': e.jobb = ertek === 'kevesebb' ? 'kevesebb' : 'tobb'; return;
       case 'irany': e.irany = ertek; if (ertek === 'le' && Number(e.cel) < 31) e.cel = 301; return;
       case 'kiegyenlit': j.kiegyenlit = ertek === 'true'; return;
+      case 'ftipus': j.formatum = ertek === 'kor' ? { tipus: 'kor' } : { tipus: ertek, bronz: !!(j.formatum || {}).bronz, csoportok: (j.formatum || {}).csoportok || 2, tovabb: (j.formatum || {}).tovabb || 2 }; return;
+      case 'fbronz': j.formatum.bronz = ertek === 'true'; return;
       default: j[mezo] = ertek;
     }
   }
@@ -1087,6 +1133,7 @@
     lep: function (d) {
       var min = Number(d.min), max = Number(d.max), dd = Number(d.d);
       if (d.t === 'f') { A.V.formatum[d.mezo] = Math.max(min, Math.min(max, (Number(A.V.formatum[d.mezo]) || 0) + dd)); A.sorsolt = null; return; }
+      if (d.t === 'jf') { var jj = A.V.jatekok.filter(function (x) { return x.id === A.szerkJatek; })[0]; jj.formatum[d.mezo] = Math.max(min, Math.min(max, (Number(jj.formatum[d.mezo]) || 0) + dd)); A.sorsolt = null; return; }
       if (d.t === 'v') {
         var b = A.V.beallit;
         b[d.mezo] = Math.max(min, Math.min(max, Number(b[d.mezo]) + dd));
@@ -1157,13 +1204,42 @@
       kuld({ action: 'ujrakezd', pin: A.pin, megerosites: v.trim().toUpperCase(), teljes: false })
         .then(function () { A.eredmTorol = false; A.utolsoFazis = {}; return lekeres(); }).then(function () { modNyit(true); render(true); }).catch(function () {});   // a hibát a kuld már kiírta
     },
-    modJatek: function (d) { var j = A.M.V.jatekok.filter(function (x) { return x.id === d.ertek; })[0]; j._torol = !j._torol; },
-    modositBe: function () { A.M = null; A.nezet = 'vezerlo'; },
+    helye: function (d) { A.M.helye = d.ertek; },
+    modKi: function (d) { var c = A.V.csapatok[Number(d.ertek)]; if (c.ki) delete c.ki; else c.ki = true; },
+    modUj: function () {
+      var K2 = L.egysegSzam(A.V.beallit), egyeni = Number(A.V.beallit.meret) === 1, db = egyeni ? 1 : K2 > 1 ? Number(A.V.beallit.bontas) : Number(A.V.beallit.meret), uj = { nev: '', egysegek: [] };
+      for (var k = 0; k < K2; k++) { var tg = []; for (var i = 0; i < db; i++) tg.push(''); uj.egysegek.push({ nev: '', tagok: tg }); }
+      A.V.csapatok.push(uj);
+    },
+    modTag: function (d) {
+      var r = d.ertek.split('|'), e = A.V.csapatok[Number(r[0])].egysegek[Number(r[1])];
+      if (r[2] === '1') e.tagok.push(''); else if (e.tagok.length > 1) e.tagok.pop();
+    },
+    modositBe: function () { A.M = null; A.V = null; A.szerkJatek = null; A.nezet = 'vezerlo'; },
     modositMent: function () {
-      var V = A.M.V, torolt = V.jatekok.filter(function (j) { return j._torol; }).map(function (j) { return j.nev; });
-      if (torolt.length && !confirm('Törlődik: ' + torolt.join(', ') + ' – a meccseivel és az eredményeivel együtt. Mehet?')) return;
-      kuld({ action: 'modosit', pin: A.pin, vazlat: { nev: V.nev, jatekok: V.jatekok.filter(function (j) { return !j._torol; }), csapatok: V.csapatok } })
-        .then(function () { A.M = null; A.nezet = 'vezerlo'; siker('Módosítás mentve ✓'); return lekeres(); }).catch(function () {});
+      var c = cfg(), V = A.V, M2 = A.M, van = {}, K2 = L.egysegSzam(V.beallit);
+      var ujKod = V.csapatok.reduce(function (n, x, t) { var o = c.csapatok[t]; return n + (!x.ki && (!o || o.ki) ? K2 : 0); }, 0);
+      V.jatekok.forEach(function (j) { van[j.id] = 1; });
+      var torolt = c.jatekok.filter(function (j) { return !van[j.id]; }).map(function (j) { return j.nev; });
+      A.uzenet = { tipus: 'info', szoveg: 'A menetrend készül és ellenőrződik…' }; render(true);
+      // előbb friss állapot: közben indulhatott új kör (a lejátszott körök nem változhatnak)
+      lekeres().then(function () { setTimeout(function () {
+        var f;
+        c = cfg();
+        try { f = SR.folytatas(c, V, A.szerver.beirasok, { helye: M2.helye, ido: 2500 }); } catch (e) { f = { hiba: 'Sorsolási hiba: ' + e.message }; }
+        A.uzenet = null;
+        if (!f.hiba && f.jelentes.hibak.length) f.hiba = f.jelentes.hibak[0];
+        if (f.hiba) { A.uzenet = { tipus: 'hiba', szoveg: f.hiba }; render(true); return; }
+        var sz = (torolt.length ? 'Törlődik: ' + torolt.join(', ') + ' – a meccseivel és az eredményeivel együtt.\n' : '') +
+          (f.maradt ? '' : 'A hátralévő körök újrasorsolódnak.\n') +
+          (f.extraKorok ? f.extraKorok + ' új kör ' + (M2.helye === 'most' ? 'jön most.' : 'kerül a végére.') + '\n' : '') +
+          (ujKod ? ujKod + ' új QR-kód kell (Vezérlő → Linkek és QR-kódok).\n' : '') +
+          (f.jelentes.figyelmeztetesek.length ? f.jelentes.figyelmeztetesek.join('\n') + '\n' : '') +
+          'A verseny ' + f.menetrend.length + ' körös lesz. Mehet?';
+        if (!confirm(sz)) { render(true); return; }
+        kuld({ action: 'modosit', pin: A.pin, vazlat: { nev: V.nev, beallit: V.beallit, jatekok: V.jatekok, csapatok: V.csapatok, formatum: V.formatum }, menetrend: f.menetrend, agrajzok: f.agrajzok })
+          .then(function () { A.M = null; A.V = null; A.szerkJatek = null; A.nezet = 'vezerlo'; siker('Módosítás mentve ✓'); return lekeres(); }).catch(function () {});
+      }, 50); });
     },
     teljesUjra: function () {
       if (!confirm('Új sorsolás és új QR-kódok kellenek – a régi kódok érvénytelenek lesznek. Mehet?')) return;
@@ -1255,7 +1331,7 @@
     },
     start: function () {
       if (!confirm('START: a csapatok és a menetrend zárolva lesznek, és elkészülnek a kódok. Mehet?')) return;
-      vazMent().then(function () { return kuld({ action: 'start', pin: A.pin, menetrend: A.sorsolt.menetrend, agrajz: A.sorsolt.agrajz || null }); })
+      vazMent().then(function () { return kuld({ action: 'start', pin: A.pin, menetrend: A.sorsolt.menetrend, agrajz: A.sorsolt.agrajz || null, agrajzok: A.sorsolt.agrajzok || null }); })
         .then(function () { A.nezet = 'vezerlo'; A.V = null; A.sorsolt = null; siker('A verseny elindult. Oszd ki a QR-kódokat, majd indítsd az 1. kört.'); return lekeres(); });
     }
   };
