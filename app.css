@@ -144,3 +144,23 @@ a { color: var(--arany); }
 .ellista div { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid #E5DECF; font-size: 14px; }
 .ellista div:first-child { border-top: 0; }
 select.mezo { appearance: auto; }
+
+/* ---- Súgó: „?” a mezők mellett, alsó panel, Súgó oldal ---- */
+.sugo-q { display: inline-flex; align-items: center; justify-content: center; position: relative; width: 22px; height: 22px; margin-left: 6px; border-radius: 50%; border: 1.5px solid var(--arany); color: var(--arany); font-family: Archivo, sans-serif; font-size: 13px; font-weight: 800; line-height: 1; letter-spacing: 0; text-transform: none; vertical-align: middle; cursor: pointer; flex: none; }
+.sugo-q::before { content: '?'; }
+.sugo-q::after { content: ''; position: absolute; inset: -6px; }
+.kartya .sugo-q { border-color: var(--zold3); color: var(--zold3); }
+.sugo-cimsor { display: flex; align-items: center; }
+.sugo-gombsor { display: flex; align-items: center; gap: 4px; }
+.sugo-gombsor .gomb { flex: 1; }
+.sugo-gomb { background: transparent; cursor: pointer; font-family: Inter, sans-serif; }
+.sugo-hatter { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 50; }
+.sugo-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 51; max-width: 480px; margin: 0 auto; max-height: 75vh; overflow-y: auto; background: var(--krem); color: var(--zold); border-radius: 20px 20px 0 0; padding: 10px 18px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 14px; }
+.sugo-fogo { width: 40px; height: 4px; border-radius: 2px; background: var(--kremvonal); align-self: center; }
+.sugo-tetel { display: flex; flex-direction: column; gap: 4px; font-size: 15px; line-height: 1.5; }
+.sugo-tetel b { font-family: Archivo, sans-serif; font-size: 17px; }
+.sugo-x { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--kremvonal); background: #fff; color: var(--zold); font-size: 16px; cursor: pointer; flex: none; }
+.sugo-lista { gap: 12px; }
+.sugo-lista .sugo-tetel { border-top: 1px solid #E5DECF; padding-top: 12px; font-size: 14px; }
+.sugo-lista .sugo-tetel:first-child { border-top: 0; padding-top: 0; }
+.sugo-lista .sugo-tetel b { font-size: 15px; }
