@@ -701,7 +701,7 @@
     var valt = Number(beallit.valtasPerc) || 0, egyszerre = 0;
     (jatekok || []).forEach(function (j) { if (j.egyszerre) egyszerre += (Number(j.hanyszor) || 0) * ((Number(j.perc) || 0) + valt); });
     if (!allomasKorok) return 0;
-    return Math.max(3, Math.floor((Number(beallit.osszIdo) - egyszerre) / allomasKorok) - valt);
+    return Math.max(1, Math.floor((Number(beallit.osszIdo) - egyszerre) / allomasKorok) - valt);   // egy kör legalább 1 perc
   }
   function osszIdo(cfg) {
     var valt = Number((cfg.beallit || {}).valtasPerc) || 0;

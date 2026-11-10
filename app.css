@@ -164,3 +164,15 @@ select.mezo { appearance: auto; }
 .sugo-lista .sugo-tetel { border-top: 1px solid #E5DECF; padding-top: 12px; font-size: 14px; }
 .sugo-lista .sugo-tetel:first-child { border-top: 0; padding-top: 0; }
 .sugo-lista .sugo-tetel b { font-size: 15px; }
+
+/* ---- Idő: beírható léptető, lüktető óra, Idő és befejezés panel ---- */
+.lepteto input.ertek { flex: 1; width: 100%; min-width: 0; border: 0; border-bottom: 2px dashed var(--vonal); border-radius: 0; background: transparent; color: inherit; padding: 0; outline: none; }
+.lepteto input.ertek:focus { border-bottom-color: var(--arany); }
+.kartya .lepteto input.ertek { border-bottom-color: var(--kremvonal); }
+.ora.lukt { animation: lukt 1s ease-in-out infinite; }
+@keyframes lukt { 50% { transform: scale(1.04); filter: brightness(1.35); } }
+@media (prefers-reduced-motion: reduce) { .ora.lukt { animation-name: luktf; } }
+@keyframes luktf { 50% { filter: brightness(1.35); } }
+.idosor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.idopar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; }
+.idopar input.mezo { text-align: center; padding: 0 4px; }

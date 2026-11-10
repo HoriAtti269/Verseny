@@ -15,14 +15,14 @@
     ]],
     ['Beállítás – 2. Létszám', [
       ['verseny_nev', 'A verseny neve', 'Ez látszik minden képernyő tetején. Az Admin futó verseny közben is átírhatja.'],
-      ['jatekosok', 'Hány játékos van?', 'Az összes résztvevő, 2–48 fő. Ebből számolja a program a csapatokat.'],
+      ['jatekosok', 'Hány játékos van?', 'Az összes résztvevő, 2–48 fő. Ebből számolja a program a csapatokat. Minden ilyen szám a − és + gombbal léptethető, vagy a számra bökve kézzel is beírható.'],
       ['meret', 'Csapatméret', 'Hány fős egy csapat. Egyéni: mindenki magáért játszik, legfeljebb 15 fő.'],
       ['maradek', 'A maradék', 'Akkor jelenik meg, ha a létszám nem osztható a csapatmérettel. Kisebb csapatok: több csapat, néhány kisebb létszámú. Nagyobb csapatok: kevesebb csapat, néhány nagyobb. A gombon látszik, mi jön ki.'],
       ['bontas', 'Hogyan játszik a csapat?', 'Egyben: a csapat mindig együtt játszik. Párokban / Hármasokban: a csapat kisebb egységekre bomlik. Ezek külön meccseket játszanak, és külön ranglistájuk is van.'],
       ['osszesites', 'Összesítés', 'Csak egyéni versenynél. Pontok: minden játék helyezése pontot ér, a több pont nyer. Helyezési számok: a helyezések összeadódnak, a kisebb összeg nyer. Holtversenyben azonos a helyezés.'],
       ['kulonbseg', 'Létszámkülönbség', 'Csak eltérő méretű csapatoknál vagy egységeknél látszik. A) A kisebb csapat plusz próbálkozást kap. B) A nagyobbikból körönként valaki pihen, és mindenki sorra kerül.'],
       ['idomeres', 'Időmérés', 'Be: visszaszámláló óra, időkeret, Szünet és Kör lezárása. Ki: nincs óra, a köröket az Admin lépteti, a Sorsolás csak a körök számát mutatja.'],
-      ['osszIdo', 'Teljes időkeret (perc)', 'Ennyi idő van az egész versenyre. A Sorsolás ebből számolja a körök hosszát, és jelzi, ha nem fér bele.'],
+      ['osszIdo', 'Teljes időkeret (perc)', 'Ennyi idő van az egész versenyre. A Sorsolás ebből számolja a körök hosszát (egy kör legalább 1 perc), és jelzi, ha nem fér bele. Verseny közben a Vezérlő „Idő és befejezés” részén állítható.'],
       ['valtasPerc', 'Váltás körönként (perc)', 'Ennyi időt hagy a program két kör között (pályacsere, beírás). Beleszámít az időkeretbe.'],
       ['sablon_ment', 'Mentés saját sablonként', 'A mostani beállítás bekerül a Saját sablonok közé. Betöltéskor a nevek üresen indulnak. Azonos névnél a program rákérdez a felülírásra.']
     ]],
@@ -41,7 +41,8 @@
       ['j_szint', 'Ki játssza', 'Az egység (pár, hármas) vagy az egész csapat. Csak párokban vagy hármasokban játszó csapatnál látszik.'],
       ['j_egyszerre', 'Mindenki egyszerre játszik', 'Pontgyűjtőnél: egyszerre játszik mindenki, pl. egy kvíz. Külön fordulókban megy.'],
       ['j_fordulok', 'Fordulók', 'Hány fordulót játszanak ebből a játékból.'],
-      ['j_perc', 'Perc / forduló', 'Egy forduló hossza. Csak bekapcsolt időmérésnél látszik.'],
+      ['j_perc', 'Perc / forduló', 'Egy forduló hossza percben. Csak bekapcsolt időmérésnél látszik.'],
+      ['j_mp', 'És másodperc', 'A perchez adódik: 0 perc és 30 másodperc egy 30 másodperces villámforduló. Egy forduló legalább 10 másodperc.'],
       ['j_palyak', 'Pályák száma', 'Hány helyen (tábla, asztal) mehet egyszerre a játék. Több pálya: több meccs fér egy körbe.'],
       ['j_hanyszor', 'Hányszor játsszák', 'Hány meccset játszik ebből egy résztvevő.'],
       ['mindenki', 'Mindenki mindenki ellen (N×)', 'Úgy állítja be a „hányszort”, hogy mindenki mindenkivel egyszer játsszon. A csapattárs nem lehet ellenfél.'],
@@ -81,9 +82,19 @@
       ['minden_torles', 'Minden törlése', 'Csapatok, menetrend, eredmények és kódok törlődnek, a saját sablonok maradnak. Teszt után ezzel indul tiszta lappal az Admin.'],
       ['kilepes', 'Kilépés az admin módból', 'Ezen a telefonon törli a PIN-t, és visszavált nézői módba.']
     ]],
+    ['Vezérlő – Idő és befejezés', [
+      ['ido_panel', 'Idő és befejezés', 'Futó verseny közben itt állítja az Admin az órát, a körök hosszát, és itt fejezheti be előbb a versenyt. A Megnyit gombbal nyílik.'],
+      ['ido_kapcs', 'Időmérés Be/Ki (menet közben)', 'Az Admin verseny közben is be- vagy kikapcsolhatja a visszaszámláló órát. Kikapcsolva a köröket az Admin lépteti.'],
+      ['ido_most', 'A mostani kör ideje', '− 1 perc / + 1 perc: ennyivel változik a hátralévő idő. Beállít: pontosan ennyi legyen hátra (perc : mp). A lejárt vagy lezárt kört újra megnyitja. Minden telefonon azonnal frissül.'],
+      ['ido_korok', 'A hátralévő körök hossza', 'A még el nem kezdett körök hossza (perc : mp). A körök közösen állíthatók, a „mindenki egyszerre” játékok fordulói játékonként. A mostani kört nem érinti.'],
+      ['ido_vege', 'Befejezés időre', 'Az Admin megadja, mikorra legyen vége (óra:perc), vagy hány perc múlva. A program a hátralévő köröket arányosan rövidíti vagy nyújtja, és megmutatja az új körhosszt. Ha nem fér bele, megírja, hány kört kell elhagyni.'],
+      ['ido_valt', 'Váltás a körök között (perc)', 'Ennyi szünettel számol a „Befejezés időre” két kör között. Az Alkalmaz ezt is elmenti.'],
+      ['ido_elhagy', 'Körök elhagyása a végéről', 'Az utolsó körök kimaradnak a versenyből, a lejátszott körök és az eredmények maradnak. A kieséses és csoportkörös körök nem hagyhatók el: azokat le kell játszani, vagy a kör indítása után az Admin döntéssel lezárni.'],
+      ['befejez', 'Verseny befejezése most', 'A mostani kör lesz az utolsó, minden elhagyható hátralévő kör kimarad. A végeredmény a lejátszott meccsekből számolódik. Ha mégis folytatnád: a Módosításnál a játék „hányszor” számát megemelve új körök adhatók.']
+    ]],
     ['Meccs javítása', [
       ['adat_szerk', 'Adat szerkesztése', 'Az Admin átírhatja az egyik fél beírását.'],
-      ['admin_dontes', 'Admin döntés', 'Az Admin döntése felülír minden beírást. A „Döntés törlése” visszaadja a döntést a beírásoknak.']
+      ['admin_dontes', 'Admin döntés', 'Az Admin döntése felülír minden beírást, és a kártyákon is ez látszik: nyert / vesztett / döntetlen (Admin döntés). A „Döntés törlése” visszaadja a döntést a beírásoknak.']
     ]],
     ['Módosítás (futó verseny)', [
       ['mod_jatekok', 'Játékok menet közben', 'Az Admin mindent állíthat. Kivétel: egy már lejátszott játék típusa és szintje. A lejátszott és a folyamatban lévő kör marad.'],

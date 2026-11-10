@@ -19,7 +19,8 @@
     uzenet: null, kuld: false,
     V: null, lepes: 1, szerkJatek: null, sorsolt: null, sorsolasFut: false, sablonok: null,
     pihenVaz: {}, agSzakasz: null,
-    sugo: null, sugoBe: tarOlvas('vm_sugo') !== 'ki', sugoVissza: null
+    sugo: null, sugoBe: tarOlvas('vm_sugo') !== 'ki', sugoVissza: null,
+    idoNyitva: false, T: null
   };
 
   // ---- Segédek ----
@@ -28,6 +29,8 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function most() { return Date.now() + A.offset; }
   function ido(ms) { var s = Math.max(0, Math.ceil(ms / 1000)); var p = Math.floor(s / 60); s = s % 60; return (p < 10 ? '0' : '') + p + ':' + (s < 10 ? '0' : '') + s; }
+  // körhossz kiírva: egész perc „8”, különben perc:mp „0:30”
+  function percKi(p) { var mp = Math.round(Number(p) * 60); return mp % 60 ? Math.floor(mp / 60) + ':' + (mp % 60 < 10 ? '0' : '') + mp % 60 : String(mp / 60); }
   function cfg() { return A.szerver ? A.szerver.config : null; }
   function szamF(x) { return String(x).replace('.', ','); }
   function masol(x) { return JSON.parse(JSON.stringify(x)); }
@@ -106,10 +109,13 @@
     if (!c || c.allapot !== 'fut' || !c.kor) return null;
     if (!idoMeresE(c.beallit)) return null;   // időmérés kikapcsolva: nincs óra
     var h = L.hatraLevo(c, most()), kor = c.menetrend[c.kor - 1];
-    var fazis = c.korLezarva || h <= 0 ? 'lejart' : h <= 120000 ? 'ket' : 'fut';
+    // arany figyelmeztetés: az utolsó 2 perc, de legfeljebb a kör negyede; 2 perces vagy rövidebb körnél nincs
+    var figy = kor.perc > 2 ? Math.min(120000, kor.perc * 15000) : 0;
+    var fazis = c.korLezarva || h <= 0 ? 'lejart' : h <= figy ? 'ket' : 'fut';
     var cim = kor.tipus === 'egyszerre' ? (jatek(kor.jatek) || {}).nev + ' · ' + c.kor + '. kör' : (kor.szakasz && kor.szakasz !== 'Csoportkör' ? kor.szakasz + ' · ' : '') + c.kor + '. KÖR / ' + c.menetrend.length;
-    var felirat = c.korLezarva ? 'A KÖR VÉGET ÉRT' : c.szunetKezd ? 'SZÜNET' : h <= 0 ? 'LEJÁRT AZ IDŐ' : h <= 120000 ? 'MÉG 2 PERC!' : cim.toUpperCase();
-    return { h: h, fazis: fazis, felirat: felirat, arany: Math.max(0, Math.min(1, h / (kor.perc * 60000))), perc: kor.perc };
+    var felirat = c.korLezarva ? 'A KÖR VÉGET ÉRT' : c.szunetKezd ? 'SZÜNET' : h <= 0 ? 'LEJÁRT AZ IDŐ' : h <= figy ? (figy === 120000 ? 'MÉG 2 PERC!' : 'HAMAROSAN VÉGE!') : cim.toUpperCase();
+    // az utolsó 10 másodpercben az óra lüktet
+    return { h: h, fazis: fazis, felirat: felirat, arany: Math.max(0, Math.min(1, h / (kor.perc * 60000))), perc: kor.perc, lukt: fazis !== 'lejart' && !c.szunetKezd && h <= 10000 };
   }
   function tick() {
     var o = oraAllapot();
@@ -119,7 +125,7 @@
     A.utolsoFazis[kulcs] = o.fazis;
     var el = document.getElementById('ora');
     if (!el) return;
-    el.className = 'ora' + (o.fazis === 'ket' ? ' figyel' : o.fazis === 'lejart' ? ' lejart' : '') + (el.classList.contains('villan') ? ' villan' : '');
+    el.className = 'ora' + (o.fazis === 'ket' ? ' figyel' : o.fazis === 'lejart' ? ' lejart' : '') + (o.lukt ? ' lukt' : '') + (el.classList.contains('villan') ? ' villan' : '');
     document.getElementById('ora-ido').textContent = ido(o.h);
     document.getElementById('ora-felirat').textContent = o.felirat;
     document.getElementById('ora-csik').style.width = (o.arany * 100) + '%';
@@ -140,7 +146,7 @@
     if (!o) return korSavHtml();
     return '<div id="ora" class="ora"><span id="ora-felirat" class="kicsi" style="color:inherit">' + esc(o.felirat) + '</span>' +
       '<span id="ora-ido" class="ido">' + ido(o.h) + '</span><div class="csik"><div id="ora-csik" style="width:' + (o.arany * 100) + '%"></div></div>' +
-      '<span style="font-size:12px;margin-top:4px">' + o.perc + ' perces kör · az Admin indítja</span></div>';
+      '<span style="font-size:12px;margin-top:4px">' + (Math.round(o.perc * 60) % 60 ? percKi(o.perc) + ' hosszú kör' : o.perc + ' perces kör') + ' · az Admin indítja</span></div>';
   }
 
   // ---- Renderelés ----
@@ -340,7 +346,7 @@
 
   function lepteto(t, mezo, ertek, min, max, kis) {
     return '<div class="lepteto' + (kis ? ' kis' : '') + '"><button aria-label="Kevesebb" data-akcio="lep" data-t="' + t + '" data-mezo="' + mezo + '" data-d="-1" data-min="' + min + '" data-max="' + max + '">−</button>' +
-      '<span class="ertek">' + ertek + '</span><button aria-label="Több" data-akcio="lep" data-t="' + t + '" data-mezo="' + mezo + '" data-d="1" data-min="' + min + '" data-max="' + max + '">+</button></div>';
+      '<input class="ertek" inputmode="numeric" aria-label="Érték (beírható)" data-lep="1" data-t="' + t + '" data-mezo="' + mezo + '" data-min="' + min + '" data-max="' + max + '" value="' + ertek + '"><button aria-label="Több" data-akcio="lep" data-t="' + t + '" data-mezo="' + mezo + '" data-d="1" data-min="' + min + '" data-max="' + max + '">+</button></div>';
   }
   function szamMezo(t, mezo, ertek, max, kis, min) {
     if (max <= 30) return lepteto(t, mezo, ertek, min || 0, max, kis);
@@ -409,9 +415,11 @@
     var m = keres(A.javit), u = utolsok(), st = L.meccsAllapot(m, u), h = '';
     h += '<div class="sor"><button class="gomb masod" data-akcio="javitBe">← Vissza</button><span class="kicsi">' + m.kor + '. kör</span></div>';
     h += '<div class="sor"><h1>' + esc(m.jatek.nev + palyaSzoveg(m)) + sg('adat_szerk') + '</h1>' + allapotCimke(st, m) + '</div>';
-    m.oldalak.forEach(function (o) {
+    // Admin döntésnél az látszik, ami számít: nyert / vesztett / döntetlen (a döntés törlése után újra a beírás)
+    var adD = m.jatek.tipus === 'parharc' ? u[L.oldalKulcs(m.id, 'admin')] : null, gyD = adD && adD.adat ? adD.adat.gyoztes : null;
+    m.oldalak.forEach(function (o, oi) {
       var e = u[L.oldalKulcs(m.id, o)];
-      h += '<div class="kartya"><span>' + nevTag(o) + '</span><span>' + esc(e ? adatSzoveg(m.jatek, e.adat) + (e.forras === 'admin' ? ' (Admin írta)' : e.forras === 'biro' ? ' (bíró írta)' : '') : 'még nincs beírva') + '</span>' +
+      h += '<div class="kartya"><span>' + nevTag(o) + '</span><span>' + esc(gyD ? (gyD === 'd' ? 'döntetlen' : (gyD === 'a') === (oi === 0) ? 'nyert' : 'vesztett') + ' (Admin döntés)' : e ? adatSzoveg(m.jatek, e.adat) + (e.forras === 'admin' ? ' (Admin írta)' : e.forras === 'biro' ? ' (bíró írta)' : '') : 'még nincs beírva') + '</span>' +
         '<button class="gomb vilagos" data-akcio="adminUrlap" data-oldal="' + o + '">Adat szerkesztése</button></div>';
       h += kulonbsegHtml(m.kor, o, false);
     });
@@ -581,6 +589,7 @@
           : '<button class="gomb fo nagy" data-akcio="kor" data-ertek="kovetkezo">' + (c.kor + 1) + '. kör indítása' + (hiany ? ' (' + hiany + ' eredmény hiányzik)' : '') + '</button>';
       } else h += '<div class="uzenet ok">Ez az utolsó kör. Ha minden beírás kész, a végeredmény az Állás fülön van.</div>';
     }
+    h += idoPanelHtml();
     var k = A.adminKor || c.kor || 1, db = { ok: 0, felig: 0, ures: 0, utkozes: 0 };
     meccsek().filter(function (m) { return m.kor === k; }).forEach(function (m) { db[L.meccsAllapot(m, u).allapot]++; });
     h += '<div class="racs3"><div class="cimke ok" style="border-radius:12px;padding:10px">' + db.ok + ' elfogadva</div><div class="cimke var" style="border-radius:12px;padding:10px">' +
@@ -617,6 +626,123 @@
         'Folytatás: az eredmények megmaradnak. Neveket és a játékok számait javíthatod, játékot törölhetsz.') + '</span>' +
       '<button class="gomb masod" data-akcio="visszaBeall">Vissza a beállításhoz</button></div>';
   }
+  // =========================================================
+  // Admin: Idő és befejezés (futó verseny közben)
+  // =========================================================
+  function idoT() { return A.T = A.T || { be: {}, ora: '', mulva: '', elhagy: 0, valt: null }; }
+  function korJatek(k) { return k.tipus === 'egyszerre' ? k.jatek : (k.meccsek[0] || {}).jatek; }
+  // kieséses / csoportkörös játék köre: ezt nem lehet elhagyni (a meccseit az Admin dönti el)
+  function formatKorE(k) { return !!L.agrajzFor(cfg(), korJatek(k)) && k.tipus !== 'egyszerre'; }
+  function jovoKorok() { var c = cfg(); return c.menetrend.slice(c.kor); }
+  function elhagyhato() { return jovoKorok().filter(function (k) { return !formatKorE(k); }).length; }
+  function valtErtek() { var T = idoT(); return T.valt == null ? Number(cfg().beallit.valtasPerc) || 0 : T.valt; }
+  // perc : mp mezőpár; a beírt érték az A.T.be[kulcs]-ban él, amíg nincs elmentve
+  function ppmm(kulcs, alapPerc) {
+    var b = idoT().be[kulcs] || {}, amp = alapPerc == null ? null : Math.round(alapPerc * 60);
+    var p = b.p != null ? b.p : amp == null ? '' : Math.floor(amp / 60), m = b.m != null ? b.m : amp == null ? '' : amp % 60;
+    return '<div class="idopar"><input class="mezo" inputmode="numeric" aria-label="perc" placeholder="perc" data-ido="' + esc(kulcs) + '|p" value="' + esc(p) + '"><b>:</b>' +
+      '<input class="mezo" inputmode="numeric" aria-label="másodperc" placeholder="mp" data-ido="' + esc(kulcs) + '|m" value="' + esc(m) + '"></div>';
+  }
+  // a mezőpár értéke másodpercben (null, ha üres vagy hibás)
+  function ppmmMp(kulcs, alapPerc) {
+    var b = idoT().be[kulcs] || {}, amp = alapPerc == null ? null : Math.round(alapPerc * 60);
+    if (b.p == null && b.m == null && amp == null) return null;
+    var p = b.p != null ? b.p : amp == null ? 0 : Math.floor(amp / 60), m = b.m != null ? b.m : amp == null ? 0 : amp % 60;
+    if (String(p).trim() === '' && String(m).trim() === '') return null;
+    p = String(p).trim() === '' ? 0 : Number(p); m = String(m).trim() === '' ? 0 : Number(m);
+    return isNaN(p) || isNaN(m) || p < 0 || m < 0 ? null : Math.round(p * 60 + m);
+  }
+  // a hátralévő körök fajtái: állomás- (és kieséses) körök közösen, a „mindenki egyszerre” játékok fordulói játékonként
+  function korFajtak() {
+    var l = [], volt = {};
+    jovoKorok().forEach(function (k) {
+      var kulcs = k.tipus === 'egyszerre' ? 'j:' + k.jatek : 'allomas';
+      if (volt[kulcs]) { volt[kulcs].db++; return; }
+      l.push(volt[kulcs] = { kulcs: kulcs, perc: k.perc, db: 1, nev: k.tipus === 'egyszerre' ? ((jatek(k.jatek) || {}).nev || k.jatek) + ' fordulói' : 'Körök' });
+    });
+    return l;
+  }
+  // „Befejezés időre”: a hátralévő körök arányosan rövidülnek vagy nyúlnak, hogy a megadott időre vége legyen
+  function idoTerv() {
+    var T = idoT(), jovo = jovoKorok(), cel = null;
+    if (String(T.mulva).trim() !== '' && Number(T.mulva) > 0) cel = Number(T.mulva) * 60000;
+    else if (/^\d\d?:\d\d$/.test(T.ora)) { var d = new Date(), r = T.ora.split(':'); d.setHours(Number(r[0]), Number(r[1]), 0, 0); cel = d.getTime() - Date.now(); if (cel <= 0) cel += 86400000; }
+    if (cel == null || !jovo.length) return null;
+    var o = oraAllapot(), mostH = o ? Math.max(0, o.h) : 0, valt = valtErtek() * 60000;
+    var szamol = function (lista) {
+      var ossz = lista.reduce(function (s, k) { return s + k.perc * 60000; }, 0), jatszo = cel - mostH - lista.length * valt, f = ossz > 0 ? jatszo / ossz : 0, uj = {}, ok = lista.length > 0;
+      lista.forEach(function (k) {
+        var kulcs = k.tipus === 'egyszerre' ? 'j:' + k.jatek : 'allomas';
+        if (uj[kulcs] != null) return;
+        uj[kulcs] = Math.floor(k.perc * 60 * f / 5) * 5;   // 5 másodpercre lefelé
+        if (uj[kulcs] < (kulcs === 'allomas' ? 60 : 10) || uj[kulcs] > (kulcs === 'allomas' ? 7200 : 3600)) ok = false;
+      });
+      return { uj: uj, ok: ok };
+    };
+    var t = szamol(jovo), ki = { cel: cel, mostH: mostH, uj: t.uj, ok: t.ok, elhagy: 0 };
+    if (!t.ok) {
+      // nem fér bele (egy kör legalább 1 perc, egy forduló legalább 10 mp): hány kört kellene elhagyni a végéről?
+      var lista = jovo.slice(), n = 0;
+      for (var i = lista.length - 1; i >= 0; i--) {
+        if (formatKorE(lista[i])) continue;
+        lista.splice(i, 1); n++;
+        if (lista.length && szamol(lista).ok) { ki.elhagy = n; break; }
+      }
+    }
+    return ki;
+  }
+  function mpKi(mp) { return Math.floor(mp / 60) + ':' + (mp % 60 < 10 ? '0' : '') + mp % 60; }
+  function idoPanelHtml() {
+    var c = cfg(), T = idoT(), ido2 = idoMeresE(c.beallit), jovo = jovoKorok(), eh = elhagyhato(), h = '';
+    h += '<div class="sotet"><div class="sor"><span class="kicsi">Idő és befejezés' + sg('ido_panel') + '</span><button class="gomb masod" data-akcio="idoPanel">' + (A.idoNyitva ? 'Bezár' : 'Megnyit') + '</button></div>';
+    if (!A.idoNyitva) return h + '</div>';
+    h += '<div class="sor"><span style="font-weight:600">Időmérés (visszaszámláló óra)' + sg('ido_kapcs') + '</span><button class="gomb ' + (ido2 ? 'fo' : 'masod') + '" data-akcio="idoKapcs">' + (ido2 ? 'Be' : 'Ki') + '</button></div>';
+    if (ido2 && c.kor) {
+      h += '<span class="kicsi">A mostani kör ideje' + sg('ido_most') + '</span><div class="racs2"><button class="gomb masod" data-akcio="idoDelta" data-ertek="-60">− 1 perc</button><button class="gomb masod" data-akcio="idoDelta" data-ertek="60">+ 1 perc</button></div>' +
+        '<div class="idosor">' + ppmm('most', null) + '<button class="gomb fo" data-akcio="idoMost">Beállít</button></div>' +
+        '<span style="font-size:13px;color:var(--szoveg2)">Ennyi legyen hátra (perc : mp). A lejárt vagy lezárt kört újra megnyitja.</span>';
+    }
+    if (ido2 && jovo.length) {
+      h += '<span class="kicsi">A hátralévő körök hossza (' + jovo.length + ' kör)' + sg('ido_korok') + '</span>';
+      korFajtak().forEach(function (f) {
+        h += '<div class="idosor" style="grid-template-columns:minmax(0,1fr) 150px"><span style="font-size:14px">' + esc(f.nev) + ' (' + f.db + ')</span>' + ppmm('k:' + f.kulcs, f.perc) + '</div>';
+      });
+      h += '<button class="gomb fo" data-akcio="idoKorok">Körhossz mentése</button>';
+      h += '<span class="kicsi">Befejezés időre' + sg('ido_vege') + '</span><div class="racs2"><label class="mezocim" style="color:var(--halvany)">EKKORRA LEGYEN VÉGE<input class="mezo" type="time" data-ido="ora" value="' + esc(T.ora) + '"></label>' +
+        '<label class="mezocim" style="color:var(--halvany)">VAGY ENNYI PERC MÚLVA<input class="mezo" inputmode="numeric" data-ido="mulva" value="' + esc(T.mulva) + '"></label></div>' +
+        '<span class="kicsi">Váltás a körök között (perc)' + sg('ido_valt') + '</span>' + lepteto('ido', 'valt', valtErtek(), 0, 15, true);
+      var t = idoTerv();
+      if (t) {
+        var veg = new Date(Date.now() + t.cel), sorok = korFajtak().map(function (f) { return f.nev + ': ' + (t.uj[f.kulcs] > 0 ? mpKi(t.uj[f.kulcs]) : '–'); });
+        h += '<div class="uzenet ' + (t.ok ? 'info' : 'hiba') + '">Vége: ' + (veg.getHours() < 10 ? '0' : '') + veg.getHours() + ':' + (veg.getMinutes() < 10 ? '0' : '') + veg.getMinutes() + ' · hátra ' + jovo.length + ' kör' +
+          (t.mostH > 0 ? ' (a mostaniból még ' + ido(t.mostH) + ')' : '') + '<br>' + esc(sorok.join(' · ')) +
+          (t.ok ? '' : '<br><b>Így nem fér bele' + (t.cel <= t.mostH ? ': a mostani körből is több van hátra – előbb azt rövidítsd (fent).' : t.elhagy ? ': hagyj el legalább ' + t.elhagy + ' kört a végéről, vagy adj több időt.' : ' – adj több időt' + (eh ? ', vagy hagyj el köröket.' : '.')) + '</b>') + '</div>';
+      }
+      h += '<button class="gomb fo" data-akcio="idoTervMent"' + (t && t.ok ? '' : ' disabled') + '>Alkalmaz</button>';
+    }
+    if (c.kor && jovo.length) {
+      h += '<span class="kicsi">Körök elhagyása a végéről' + sg('ido_elhagy') + '</span>';
+      if (eh) h += lepteto('ido', 'elhagy', Math.min(T.elhagy, eh), 0, eh, true) + '<button class="gomb vesz" data-akcio="elhagy"' + (Math.min(T.elhagy, eh) > 0 ? '' : ' disabled') + '>' + Math.min(T.elhagy, eh) + ' kör elhagyása</button>';
+      if (jovo.length > eh) h += '<span style="font-size:13px;color:var(--szoveg2)">' + (jovo.length - eh) + ' kieséses / csoportkörös kör nem hagyható el: játsszátok le, vagy a kör indítása után a meccsre koppintva döntsd el (Admin döntés).</span>';
+      if (eh) h += '<button class="gomb vesz" data-akcio="befejez">Verseny befejezése most</button><span style="font-size:13px;color:var(--szoveg2)">A mostani kör az utolsó, a hátralévő körök kimaradnak. A végeredmény a lejátszott meccsekből számolódik.' + sg('befejez') + '</span>';
+    }
+    return h + '</div>';
+  }
+  // a végéről K kör elhagyása: a lejátszott körök és az eredmények maradnak
+  function elhagyMent(K, uzenet) {
+    A.uzenet = { tipus: 'info', szoveg: 'A menetrend átalakul…' }; render(true);
+    return lekeres().then(function () {
+      var c = cfg(), V = { nev: c.nev, beallit: masol(c.beallit), jatekok: masol(c.jatekok), csapatok: masol(c.csapatok), formatum: masol(c.formatum || { tipus: 'kor' }) }, f;
+      try { f = SR.folytatas(c, V, A.szerver.beirasok, { helye: 'vegen', ido: 2500, elhagy: K }); } catch (e) { f = { hiba: 'Hiba: ' + e.message }; }
+      A.uzenet = null;
+      if (!f.hiba && f.jelentes.hibak.length) f.hiba = f.jelentes.hibak[0];
+      if (!f.hiba && !f.elhagyva) f.hiba = 'Nincs elhagyható kör.';
+      if (f.hiba) { A.uzenet = { tipus: 'hiba', szoveg: f.hiba }; render(true); return; }
+      return kuld({ action: 'modosit', pin: A.pin, vazlat: V, menetrend: f.menetrend, agrajzok: f.agrajzok, rovidit: f.rovidit })
+        .then(function () { idoT().elhagy = 0; A.adminKor = null; siker(uzenet.replace('%', f.elhagyva)); return lekeres(); }).catch(function () {});
+    });
+  }
+
   // Futó verseny módosítása (nevek, játékok számai, játék törlése)
   function mmezo(cimke, ut, ertek, szamE, sk) {
     return '<label class="mezocim">' + (sk ? '<span class="sugo-cimsor">' + cimke + sg(sk) + '</span>' : cimke) + '<input class="mezo" data-mod="' + esc(ut) + '"' + (szamE ? ' inputmode="numeric"' : '') + ' value="' + esc(ertek == null ? '' : ertek) + '"></label>';
@@ -981,6 +1107,9 @@
   function jmezo(cimke, ut, ertek, tipus, sk) {
     return '<label class="mezocim">' + (sk ? '<span class="sugo-cimsor">' + cimke + sg(sk) + '</span>' : cimke) + '<input class="mezo" data-jm="' + ut + '"' + (tipus === 'szam' ? ' inputmode="numeric"' : '') + ' value="' + esc(ertek == null ? '' : ertek) + '"></label>';
   }
+  function jidoMezo(cimke, resz, ertek, sk) {
+    return '<label class="mezocim"><span class="sugo-cimsor">' + cimke + sg(sk) + '</span><input class="mezo" data-jido="' + resz + '" inputmode="numeric" value="' + esc(ertek) + '"></label>';
+  }
   var KERDES = 'KÉRDÉS A BEÍRÁSNÁL (NEM KÖTELEZŐ)';
   // Többjátékos versenyben a párharc-játék saját formátuma (egyjátékosnál a verseny formátuma: formatumHtml)
   function jatekFormatum(j) { return A.V.jatekok.length > 1 && j.tipus === 'parharc' && !j.egyszerre && j.formatum && (j.formatum.tipus === 'kieses' || j.formatum.tipus === 'csoport') ? j.formatum : null; }
@@ -1006,7 +1135,7 @@
     if (j.tipus === 'pontgyujto') h += '<div class="sor"><span style="font-weight:600">Mindenki egyszerre játszik (pl. kvíz)' + sg('j_egyszerre') + '</span>' + jv('egyszerre', j.egyszerre ? 'false' : 'true', j.egyszerre ? 'Be' : 'Ki', j.egyszerre) + '</div>';
     if (j.egyszerre) {
       // időmérés nélkül nincs „Perc / forduló” (a perc a háttérben marad, a szerver kéri)
-      h += idoMeresE(A.V.beallit) ? '<div class="racs2">' + jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam', 'j_fordulok') + jmezo('PERC / FORDULÓ', 'perc', j.perc, 'szam', 'j_perc') + '</div>' : jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam', 'j_fordulok');
+      h += idoMeresE(A.V.beallit) ? '<div class="racs2">' + jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam', 'j_fordulok') + jidoMezo('PERC / FORDULÓ', 'p', Math.floor(Math.round((Number(j.perc) || 0) * 60) / 60), 'j_perc') + '</div>' + jidoMezo('ÉS MÁSODPERC (VILLÁMKVÍZHEZ)', 'm', Math.round((Number(j.perc) || 0) * 60) % 60, 'j_mp') : jmezo('FORDULÓK', 'hanyszor', j.hanyszor, 'szam', 'j_fordulok');
     } else {
       // kieséses / csoportkörös játéknál a meccsek számát az ágrajz adja: nincs „hányszor”
       if (jatekFormatum(j)) h += jmezo('PÁLYÁK SZÁMA', 'palyak', j.palyak, 'szam', 'j_palyak');
@@ -1121,7 +1250,7 @@
       if (!idoMeresE(A.V.beallit)) h += '<div class="sotet" style="padding:10px"><span class="cim" style="font-size:24px">' + j.korok + '</span><span class="kicsi">kör</span></div>';
       else h += '<div class="racs3"><div class="sotet" style="padding:10px"><span class="cim" style="font-size:24px">' + j.korok + '</span><span class="kicsi">kör</span></div>' +
         '<div class="sotet" style="padding:10px"><span class="cim" style="font-size:24px">' + (S2.menetrend.filter(function (k) { return k.tipus === 'allomas'; })[0] || S2.menetrend[0]).perc + '\'</span><span class="kicsi">játék / kör</span></div>' +
-        '<div class="sotet" style="padding:10px"><span class="cim" style="font-size:24px">' + j.osszPerc + '\'</span><span class="kicsi">összesen</span></div></div>';
+        '<div class="sotet" style="padding:10px"><span class="cim" style="font-size:24px">' + szamF(Math.round(j.osszPerc * 10) / 10) + '\'</span><span class="kicsi">összesen</span></div></div>';
       if (idoMeresE(A.V.beallit) && j.osszPerc > Number(A.V.beallit.osszIdo) + 2) h += '<div class="uzenet hiba">Az idő több, mint a megadott ' + A.V.beallit.osszIdo + ' perc – növeld az időkeretet, vagy csökkentsd a játékok számát.</div>';
       h += '<div class="kartya"><span class="kicsi">AUTOMATIKUS ELLENŐRZÉS' + (S2.forras === 'sablon' ? ' · a karácsonyi, előre ellenőrzött menetrend' : '') + sg('ellenorzes') + '</span><div class="ellista">';
       j.hibak.forEach(function (x) { h += '<div><span style="color:var(--hiba);font-weight:800">✗</span><span>' + esc(x) + '</span></div>'; });
@@ -1174,19 +1303,42 @@
       urlapNyit(t, 'biro');
     },
     urlapBe: function () { A.urlap = null; },
-    lep: function (d) {
-      var min = Number(d.min), max = Number(d.max), dd = Number(d.d);
-      if (d.t === 'f') { A.V.formatum[d.mezo] = Math.max(min, Math.min(max, (Number(A.V.formatum[d.mezo]) || 0) + dd)); A.sorsolt = null; return; }
-      if (d.t === 'jf') { var jj = A.V.jatekok.filter(function (x) { return x.id === A.szerkJatek; })[0]; jj.formatum[d.mezo] = Math.max(min, Math.min(max, (Number(jj.formatum[d.mezo]) || 0) + dd)); A.sorsolt = null; return; }
-      if (d.t === 'v') {
-        var b = A.V.beallit;
-        b[d.mezo] = Math.max(min, Math.min(max, Number(b[d.mezo]) + dd));
-        if (d.mezo === 'jatekosok') { if (Number(b.meret) === 1 && b.jatekosok > L.MAX_EGYENI) b.meret = 2; vazMeretez(false); }
-        A.sorsolt = null;
-        return;
-      }
-      var te = A.urlap.tetelek[Number(d.t)];
-      te.adat[d.mezo] = Math.max(min, Math.min(max, (Number(te.adat[d.mezo]) || 0) + dd));
+    lep: function (d) { var dd = Number(d.d); lepAllit(d, function (r) { return r + dd; }); },
+    // ---- idő és befejezés ----
+    idoPanel: function () { A.idoNyitva = !A.idoNyitva; },
+    idoKapcs: function () { kuld({ action: 'ido', pin: A.pin, idomeres: !idoMeresE(cfg().beallit) }).then(function () { A.utolsoFazis = {}; return lekeres(); }).catch(function () {}); },
+    idoDelta: function (d) { kuld({ action: 'ido', pin: A.pin, deltaMp: Number(d.ertek) }).then(function () { return lekeres(); }).catch(function () {}); },
+    idoMost: function () {
+      var mp = ppmmMp('most', null);
+      if (mp == null) { A.uzenet = { tipus: 'hiba', szoveg: 'Írd be, mennyi idő legyen hátra (perc : mp).' }; return; }
+      kuld({ action: 'ido', pin: A.pin, hatraMp: mp }).then(function () { delete idoT().be.most; siker('A kör ideje beállítva ✓'); return lekeres(); }).catch(function () {});
+    },
+    idoKorok: function () {
+      var korok = { jatek: {} }, hiba = null;
+      korFajtak().forEach(function (f) {
+        var mp = ppmmMp('k:' + f.kulcs, f.perc);
+        if (mp == null || mp < 10) { hiba = f.nev + ': legalább 10 mp kell.'; return; }
+        if (f.kulcs === 'allomas') korok.allomas = mp / 60; else korok.jatek[f.kulcs.slice(2)] = mp / 60;
+      });
+      if (hiba) { A.uzenet = { tipus: 'hiba', szoveg: hiba }; return; }
+      kuld({ action: 'ido', pin: A.pin, korok: korok }).then(function () { var be = idoT().be; Object.keys(be).forEach(function (k) { if (k.indexOf('k:') === 0) delete be[k]; }); siker('Körhossz mentve ✓'); return lekeres(); }).catch(function () {});
+    },
+    idoTervMent: function () {
+      var t = idoTerv();
+      if (!t || !t.ok) return;
+      var korok = { jatek: {} };
+      Object.keys(t.uj).forEach(function (k) { if (k === 'allomas') korok.allomas = t.uj[k] / 60; else korok.jatek[k.slice(2)] = t.uj[k] / 60; });
+      kuld({ action: 'ido', pin: A.pin, korok: korok, valtasPerc: valtErtek() }).then(function () { var T = idoT(); T.be = {}; T.ora = ''; T.mulva = ''; T.valt = null; siker('Időterv mentve ✓'); return lekeres(); }).catch(function () {});
+    },
+    elhagy: function () {
+      var K2 = Math.min(idoT().elhagy, elhagyhato());
+      if (K2 < 1 || !confirm('Az utolsó ' + K2 + ' kör kimarad a versenyből. A lejátszott körök és az eredmények maradnak. Mehet?')) return;
+      elhagyMent(K2, '% kör elhagyva ✓');
+    },
+    befejez: function () {
+      var c = cfg(), eh = elhagyhato(), marad = jovoKorok().length - eh;
+      if (!eh || !confirm('A verseny a mostani (' + c.kor + '.) körrel véget ér: ' + eh + ' hátralévő kör kimarad.' + (marad ? '\n' + marad + ' kieséses / csoportkörös kör megmarad: játsszátok le, vagy az Admin döntéssel zárd le.' : '') + '\nA végeredmény a lejátszott meccsekből számolódik. Mehet?')) return;
+      elhagyMent(eh, 'A verseny lezárva: % kör kimaradt.');
     },
     valaszt: function (d) {
       var v = d.ertek === 'true' ? true : d.ertek === 'false' ? false : /^\d+$/.test(d.ertek) ? Number(d.ertek) : d.ertek;
@@ -1281,7 +1433,7 @@
           (f.jelentes.figyelmeztetesek.length ? f.jelentes.figyelmeztetesek.join('\n') + '\n' : '') +
           'A verseny ' + f.menetrend.length + ' körös lesz. Mehet?';
         if (!confirm(sz)) { render(true); return; }
-        kuld({ action: 'modosit', pin: A.pin, vazlat: { nev: V.nev, beallit: V.beallit, jatekok: V.jatekok, csapatok: V.csapatok, formatum: V.formatum }, menetrend: f.menetrend, agrajzok: f.agrajzok })
+        kuld({ action: 'modosit', pin: A.pin, vazlat: { nev: V.nev, beallit: V.beallit, jatekok: V.jatekok, csapatok: V.csapatok, formatum: V.formatum }, menetrend: f.menetrend, agrajzok: f.agrajzok, rovidit: f.rovidit })
           .then(function () { A.M = null; A.V = null; A.szerkJatek = null; A.nezet = 'vezerlo'; siker('Módosítás mentve ✓'); return lekeres(); }).catch(function () {});
       }, 50); });
     },
@@ -1380,6 +1532,23 @@
     }
   };
 
+  // léptető: a ± gomb és a kézzel beírt szám ugyanide fut (uj: a régi értékből az új)
+  function lepAllit(d, uj) {
+    var min = Number(d.min), max = Number(d.max);
+    if (d.t === 'ido') { var T = idoT(); T[d.mezo] = Math.max(min, Math.min(max, uj(d.mezo === 'valt' ? valtErtek() : Number(T[d.mezo]) || 0))); return; }
+    if (d.t === 'f') { A.V.formatum[d.mezo] = Math.max(min, Math.min(max, uj(Number(A.V.formatum[d.mezo]) || 0))); A.sorsolt = null; return; }
+    if (d.t === 'jf') { var jj = A.V.jatekok.filter(function (x) { return x.id === A.szerkJatek; })[0]; jj.formatum[d.mezo] = Math.max(min, Math.min(max, uj(Number(jj.formatum[d.mezo]) || 0))); A.sorsolt = null; return; }
+    if (d.t === 'v') {
+      var b = A.V.beallit;
+      b[d.mezo] = Math.max(min, Math.min(max, uj(Number(b[d.mezo]))));
+      if (d.mezo === 'jatekosok') { if (Number(b.meret) === 1 && b.jatekosok > L.MAX_EGYENI) b.meret = 2; vazMeretez(false); }
+      A.sorsolt = null;
+      return;
+    }
+    var te = A.urlap.tetelek[Number(d.t)];
+    te.adat[d.mezo] = Math.max(min, Math.min(max, uj(Number(te.adat[d.mezo]) || 0)));
+  }
+
   $app.addEventListener('click', function (e) {
     var el = e.target.closest('[data-akcio]');
     if (!el || el.disabled) return;
@@ -1404,12 +1573,34 @@
       for (var i = 0; i < ut.length - 1; i++) o = o[ut[i]] = o[ut[i]] || {};
       o[ut[ut.length - 1]] = el.getAttribute('inputmode') === 'numeric' ? (parseInt(el.value, 10) || 0) : el.value;
       A.sorsolt = null;
+    } else if (d.jido) {
+      // „mindenki egyszerre” forduló hossza: perc + másodperc, legalább 10 mp
+      var jq = A.V.jatekok.filter(function (x) { return x.id === A.szerkJatek; })[0], regiMp = Math.round((Number(jq.perc) || 0) * 60), n2 = Math.max(0, parseInt(el.value, 10) || 0);
+      var ujMp = d.jido === 'p' ? n2 * 60 + regiMp % 60 : Math.floor(regiMp / 60) * 60 + Math.min(59, n2);
+      jq.perc = Math.max(10, Math.min(3600, ujMp)) / 60;
+      A.sorsolt = null;
+    } else if (d.ido) {
+      var T = idoT(), r = d.ido.split('|');
+      if (r[0] === 'ora') { T.ora = el.value; T.mulva = ''; }
+      else if (r[0] === 'mulva') { T.mulva = el.value; T.ora = ''; }
+      else { T.be[r[0]] = T.be[r[0]] || {}; T.be[r[0]][r[1]] = el.value; }
     } else if (d.szam && A.urlap) {
       var n = parseInt(el.value, 10);
       A.urlap.tetelek[Number(d.t)].adat[d.szam] = isNaN(n) ? -1 : n;
     }
   });
-  $app.addEventListener('change', function (e) { if (e.target.dataset.szam) render(true); });
+  $app.addEventListener('change', function (e) {
+    var el = e.target;
+    if (el.dataset.szam) render(true);
+    // léptető kézzel beírt száma: a határok közé igazítva kerül be; a rajzolás késik, hogy a következő koppintás ne vesszen el
+    if (el.dataset.lep) {
+      var n = parseInt(el.value, 10);
+      if (!isNaN(n)) lepAllit(el.dataset, function () { return n; });
+      setTimeout(function () { render(false); }, 300);
+    }
+    // idő-mezők: a „Befejezés időre” előnézete a beírás után frissül
+    if (el.dataset.ido) setTimeout(function () { render(false); }, 300);
+  });
 
   // ---- Indulás ----
   (function () {
