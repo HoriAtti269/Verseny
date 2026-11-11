@@ -279,7 +279,10 @@
     var jatekTablak = (cfg.jatekok || []).map(function (j) { return j.tipus === 'pontgyujto' ? ptTar[j.id] : agrajzFor(cfg, j.id) ? koTabla(cfg, j, meccsek, u, false) : parharcTabla(cfg, j, meccsek, u, false); });
 
     [egysegek, csapatok].forEach(function (l) { l.forEach(function (x) { x.pont = kerekit(x.pont, 2); x.fol = kerekit(x.fol, 2); delete x.ellen; }); });
-    return { K: K, egysegek: rendez(egysegek), csapatok: rendez(csapatok), jatekTablak: jatekTablak };
+    // helyezés: ha minden holtverseny-szabály (P, GY, FÖL, Buchholz) után is egyenlők, azonos hely jár (1., 1., 3.)
+    var egyenlo = function (x, y) { return x.pont === y.pont && x.gy === y.gy && x.fol === y.fol && x.buch === y.buch; };
+    rendez(egysegek); rendez(csapatok); sportHely(egysegek, egyenlo); sportHely(csapatok, egyenlo);
+    return { K: K, egysegek: egysegek, csapatok: csapatok, jatekTablak: jatekTablak };
   }
 
   // ---------------------------------------------------------
@@ -716,7 +719,89 @@
     return perc * 60000 - (ref - cfg.korStart);
   }
 
+  // ---------------------------------------------------------
+  // 7. rész: saját tempó (kieséses / csoportkörös rész körök nélkül) és a „Kör vége”
+  // ---------------------------------------------------------
+  // Egy játék formátuma: játékonként (j.formatum), vagy a régi egyjátékos cfg.formatum
+  function formatumFor(cfg, jid) {
+    var j = jatekTar(cfg)[jid], elso = ((cfg.jatekok || [])[0] || {}).id;
+    if (j && j.formatum && j.formatum.tipus && j.formatum.tipus !== 'kor') return j.formatum;
+    return jid === elso && bajnoksagE(cfg) && cfg.formatum && cfg.formatum.tipus !== 'kor' ? cfg.formatum : null;
+  }
+  // Saját tempós részek: a kieséses / csoportkörös játék körei egy blokkban, ha a formátumnál „Haladás: Saját tempó” áll
+  function tempoBlokkok(cfg) {
+    var ki = [];
+    (cfg.jatekok || []).forEach(function (j) {
+      var ag = agrajzFor(cfg, j.id), f = formatumFor(cfg, j.id), tol = 0, ig = 0;
+      if (!ag || !f || f.haladas !== 'sajat') return;
+      (cfg.menetrend || []).forEach(function (k, r) {
+        if (r + 1 >= (ag.kezd || 1) && k.meccsek.some(function (m) { return m.jatek === j.id; })) { if (!tol) tol = r + 1; ig = r + 1; }
+      });
+      if (tol) ki.push({ jid: j.id, tol: tol, ig: ig });
+    });
+    return ki;
+  }
+  // A megadott (alapból a mostani) kör saját tempós része, vagy null
+  function tempoBlokk(cfg, kor) {
+    var k = kor == null ? Number(cfg.kor) || 0 : kor, l = k ? tempoBlokkok(cfg) : [];
+    for (var i = 0; i < l.length; i++) if (l[i].tol <= k && k <= l[i].ig) return l[i];
+    return null;
+  }
+  // Új meccs már nem indulhat: „Befejezés most”, vagy lejárt a „Befejezés időre”
+  function tempoStopE(cfg, most) { return !!cfg.tempoStop || (!!cfg.tempoVege && most >= cfg.tempoVege); }
+  // A saját tempós rész állapota. Egy sor: { m, st, all: kesz | megy | beir | mehet | var, palya, hatra, ok, kire }
+  //   megy = elindult, még nincs beírás; beir = eredményre vár; mehet = mindkét fél ráér és van szabad pálya
+  function tempoAllapot(cfg, lista, u, most, blokk) {
+    var b = blokk || tempoBlokk(cfg);
+    if (!b) return null;
+    var ind = cfg.indulasok || {}, j = jatekTar(cfg)[b.jid], jatszik = {}, kivalasztva = {}, palyaFog = {}, sorok = [];
+    var stop = tempoStopE(cfg, most), szunet = !!cfg.szunetKezd, p;
+    lista.forEach(function (m) {
+      if (m.jatekId !== b.jid || m.kor < b.tol || m.kor > b.ig) return;
+      var st = meccsAllapot(m, u), i = ind[m.id] || null, s = { m: m, st: st, ind: i, palya: i ? i.p : null, all: null };
+      if (st.allapot === 'ok') s.all = 'kesz';
+      else if (i && st.allapot === 'ures') {
+        s.all = 'megy'; palyaFog[i.p] = 1;
+        m.oldalak.forEach(function (o) { jatszik[o] = 1; });
+        s.hatra = (i.perc || cfg.menetrend[m.kor - 1].perc) * 60000 - ((cfg.szunetKezd || most) - i.t);
+      } else if (st.allapot === 'felig' || st.allapot === 'utkozes') s.all = 'beir';
+      sorok.push(s);
+    });
+    var szabad = [];
+    for (p = 0; p < (Number(j.palyak) || 1); p++) if (!palyaFog[p]) szabad.push(p);
+    // a menetrend sorrendjében: a korábbi meccs kapja előbb a szabad pályát
+    sorok.forEach(function (s) {
+      if (s.all) return;
+      var m = s.m;
+      s.all = 'var';
+      if (!meccsKesz(m)) { s.ok = 'elozo'; return; }
+      if (stop) { s.ok = 'vege'; return; }
+      var f = m.oldalak.filter(function (o) { return jatszik[o]; });
+      if (f.length) { s.ok = 'jatszik'; s.kire = f; return; }
+      if (m.oldalak.some(function (o) { return kivalasztva[o]; })) { s.ok = 'masik'; return; }
+      if (szunet) { s.ok = 'szunet'; return; }
+      if (!szabad.length) { s.ok = 'palya'; return; }
+      s.all = 'mehet'; s.palya = szabad.shift();
+      m.oldalak.forEach(function (o) { kivalasztva[o] = 1; });
+    });
+    var db = { kesz: 0, megy: 0, beir: 0, mehet: 0, 'var': 0 };
+    sorok.forEach(function (s) { db[s.all]++; });
+    // kész: minden meccs megvan – vagy már nem indul új, és a futók is befejeződtek
+    var kesz = sorok.length > 0 && (db.kesz === sorok.length || (stop && !db.megy && !db.beir));
+    return { blokk: b, jatek: j, sorok: sorok, db: db, osszes: sorok.length, kesz: kesz, stop: stop };
+  }
+  // A következő indítható kör sorszáma (saját tempós rész után a rész utáni első kör)
+  function kovKor(cfg) { var b = tempoBlokk(cfg); return (b ? b.ig : Number(cfg.kor) || 0) + 1; }
+  // Minden eredmény beérkezett-e a mostani körben (vagy saját tempós részben) – ettől függ a „Kör vége”
+  function szakaszKesz(cfg, lista, u, most) {
+    if (!cfg.kor) return false;
+    var b = tempoBlokk(cfg);
+    if (b) return tempoAllapot(cfg, lista, u, most, b).kesz;
+    return lista.filter(function (m) { return m.kor === cfg.kor; }).every(function (m) { return meccsAllapot(m, u).allapot === 'ok'; });
+  }
+
   var Logika = {
+    formatumFor: formatumFor, tempoBlokkok: tempoBlokkok, tempoBlokk: tempoBlokk, tempoStopE: tempoStopE, tempoAllapot: tempoAllapot, kovKor: kovKor, szakaszKesz: szakaszKesz,
     MIN_JATEKOS: MIN_JATEKOS, MAX_JATEKOS: MAX_JATEKOS, MAX_EGYENI: MAX_EGYENI,
     eloszt: eloszt, csapatBeosztas: csapatBeosztas, valtozatok: valtozatok, egysegSzam: egysegSzam, hatekonySzint: hatekonySzint,
     oldalCsapat: oldalCsapat, oldalEgysegek: oldalEgysegek, oldalTagok: oldalTagok, oldalNev: oldalNev, oldalRovidNev: oldalRovidNev, tagNevek: tagNevek,

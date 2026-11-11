@@ -22,6 +22,8 @@
       ['osszesites', 'Összesítés', 'Csak egyéni versenynél. Pontok: minden játék helyezése pontot ér, a több pont nyer. Helyezési számok: a helyezések összeadódnak, a kisebb összeg nyer. Holtversenyben azonos a helyezés.'],
       ['kulonbseg', 'Létszámkülönbség', 'Csak eltérő méretű csapatoknál vagy egységeknél látszik. A) A kisebb csapat plusz próbálkozást kap. B) A nagyobbikból körönként valaki pihen, és mindenki sorra kerül.'],
       ['idomeres', 'Időmérés', 'Be: visszaszámláló óra, időkeret, Szünet és Kör lezárása. Ki: nincs óra, a köröket az Admin lépteti, a Sorsolás csak a körök számát mutatja.'],
+      ['kor_vege', 'Kör vége', 'Mi történjen, ha a kör (vagy a saját tempós rész) minden eredménye beérkezett. Ki: megy tovább az óra. Gombra: az óra megáll, minden telefonon „A KÖR VÉGET ÉRT” látszik, a következő kört az Admin indítja. Magától: a következő kör a beállított várakozás után magától indul; az Admin a „Várjunk” gombbal megállíthatja. Magától soha nem indul hiányos vagy ütköző eredménynél, szünetben és az utolsó kör után. Menet közben az Idő és befejezés panelen állítható.'],
+      ['kor_vege_mp', 'Várakozás a következő kör előtt', 'Magától módban ennyi idő telik el az utolsó eredmény és a következő kör indulása között: 5 másodperc és 10 perc között, perc : másodperc alakban. Alapból 15 másodperc.'],
       ['osszIdo', 'Teljes időkeret (perc)', 'Ennyi idő van az egész versenyre. A Sorsolás ebből számolja a körök hosszát (egy kör legalább 1 perc), és jelzi, ha nem fér bele. Verseny közben a Vezérlő „Idő és befejezés” részén állítható.'],
       ['valtasPerc', 'Váltás körönként (perc)', 'Ennyi időt hagy a program két kör között (pályacsere, beírás). Beleszámít az időkeretbe.'],
       ['sablon_ment', 'Mentés saját sablonként', 'A mostani beállítás bekerül a Saját sablonok közé. Betöltéskor a nevek üresen indulnak. Azonos névnél a program rákérdez a felülírásra.']
@@ -33,7 +35,8 @@
       ['formatum', 'Formátum (egyjátékos verseny)', 'Körmérkőzés: közös tabella. Egyenes kiesés: ágrajz, erőnyerőkkel. Csoportkör + kiesés: csoportokban mindenki mindenki ellen, a legjobbak ágrajzba kerülnek.'],
       ['csoportok', 'Csoportok száma', 'Hány csoportra osztja a program a résztvevőket.'],
       ['tovabb', 'Továbbjutó csoportonként', 'Hányan jutnak tovább csoportonként az ágrajzba.'],
-      ['bronz', 'Bronzmeccs a 3. helyért', 'Be: a két elődöntő-vesztes megmérkőzik. Ki: mindketten 3. helyezettek. 4-nél kevesebb továbbjutónál nincs bronzmeccs.']
+      ['bronz', 'Bronzmeccs a 3. helyért', 'Be: a két elődöntő-vesztes megmérkőzik. Ki: mindketten 3. helyezettek. 4-nél kevesebb továbbjutónál nincs bronzmeccs.'],
+      ['haladas', 'Haladás', 'Kieséses és csoportkörös résznél választható. Saját tempó: nincs kör és nincs Admin-indítás – ha egy meccs mindkét fele ráér, mehet; a játékosok az „Indulunk” gombbal indítják a meccs óráját, a program az első szabad pályát írja ki. Körönként: az Admin indítja a köröket, mint a többi játéknál. Új formátumnál alapból Saját tempó; a korábban mentett versenyek és sablonok Körönként maradnak.']
     ]],
     ['Játék szerkesztése', [
       ['j_nev', 'Játék neve', 'Ez látszik a menetrendben, a beírásnál és az Állás fülén.'],
@@ -78,12 +81,17 @@
       ['allapotok', 'Elfogadva / hiányzik / ütközés', 'A kiválasztott kör meccsei. A számokkal választható a kör. Egy meccsre bökve az Admin javíthatja az eredményt.'],
       ['pihenok', 'Pihenők ebben a körben', 'B módban itt látszik, ki pihen. Ha még nincs kiválasztva, pirossal jelzi.'],
       ['qr', 'Linkek és QR-kódok', 'Csapatonként vagy egységenként egy kód, plusz a bírói kódok. Ezzel lépnek be a résztvevők.'],
+      ['en_vagyok', 'Ez vagyok én', 'Ha az Admin maga is játszik: a saját nevénél megnyomva ezen a telefonon a Kör fülön a saját meccse is látszik, és be tudja írni az eredményét, mint bárki más. Az Admin-fülek megmaradnak. Ugyanez történik, ha az Admin a saját QR-kódját olvassa be. „Mégsem én”: megszünteti.'],
+      ['tempo', 'Saját tempós rész', 'A kieséses / csoportkörös rész körök nélkül megy. Az Admin elindítja a részt, onnan a játékosok indítják a meccseiket. Most játszik: pálya és hátralévő idő. Mehet: mindkét fél ráér, van szabad pálya – az Admin is elindíthatja (Indít). Vár: megmutatja, mire. Egy meccsre koppintva az Admin javíthat vagy dönthet. A rész akkor ér véget, ha az utolsó meccse is kész; utána indítható a következő kör.'],
       ['eredm_torles', 'Eredmények törlése + Vissza a beállításhoz', 'Nem: folytatás módosítással, az eredmények maradnak. Igen: újrakezdés az 1. körtől, miután az Admin beírja a „TÖRLÉS” szót.'],
       ['minden_torles', 'Minden törlése', 'Csapatok, menetrend, eredmények és kódok törlődnek, a saját sablonok maradnak. Teszt után ezzel indul tiszta lappal az Admin.'],
       ['kilepes', 'Kilépés az admin módból', 'Ezen a telefonon törli a PIN-t, és visszavált nézői módba.']
     ]],
     ['Vezérlő – Idő és befejezés', [
       ['ido_panel', 'Idő és befejezés', 'Futó verseny közben itt állítja az Admin az órát, a körök hosszát, és itt fejezheti be előbb a versenyt. A Megnyit gombbal nyílik.'],
+      ['tempo_ido', 'A futó meccsek ideje', 'Saját tempós részben minden éppen futó meccs órájához hozzáad vagy elvesz egy percet.'],
+      ['tempo_hossz', 'A meccsek hossza', 'Saját tempós részben a még el nem indult meccsek hossza. A már futó meccsek órája nem változik.'],
+      ['tempo_vege', 'Befejezés (saját tempó)', 'Befejezés most: új meccs nem indul, a futó meccsek befejeződnek, a többi kimarad. Befejezés időre: a megadott idő letelte után nem indul új meccs. Utána indítható a következő rész, vagy lezárható a verseny. „Mégis folytatjuk”: visszavonja.'],
       ['ido_kapcs', 'Időmérés Be/Ki (menet közben)', 'Az Admin verseny közben is be- vagy kikapcsolhatja a visszaszámláló órát. Kikapcsolva a köröket az Admin lépteti.'],
       ['ido_most', 'A mostani kör ideje', '− 1 perc / + 1 perc: ennyivel változik a hátralévő idő. Beállít: pontosan ennyi legyen hátra (perc : mp). A lejárt vagy lezárt kört újra megnyitja. Minden telefonon azonnal frissül.'],
       ['ido_korok', 'A hátralévő körök hossza', 'A még el nem kezdett körök hossza (perc : mp). A körök közösen állíthatók, a „mindenki egyszerre” játékok fordulói játékonként. A mostani kört nem érinti.'],
