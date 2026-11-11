@@ -176,3 +176,11 @@ select.mezo { appearance: auto; }
 .idosor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .idopar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; }
 .idopar input.mezo { text-align: center; padding: 0 4px; }
+
+/* ---- Megosztott végeredmény: általános táblázat ---- */
+.etabla { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+.etabla th { text-align: left; font-size: 11px; font-weight: 700; color: var(--szurke); padding: 10px 6px; text-transform: uppercase; }
+.etabla td { padding: 10px 6px; border-top: 1px solid #E5DECF; vertical-align: top; }
+.etabla .j { text-align: right; white-space: nowrap; }
+.etabla tr.dob td { font-weight: 700; }
+a.gomb { color: var(--zold); }

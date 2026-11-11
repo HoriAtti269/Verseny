@@ -20,7 +20,8 @@
     V: null, lepes: 1, szerkJatek: null, sorsolt: null, sorsolasFut: false, sablonok: null,
     pihenVaz: {}, agSzakasz: null,
     sugo: null, sugoBe: tarOlvas('vm_sugo') !== 'ki', sugoVissza: null,
-    idoNyitva: false, T: null
+    idoNyitva: false, T: null,
+    megosztott: null, eredmeny: null, eredmenyHiba: null, archiv: null, pdfFut: null, pdfUrl: null, oklMod: 'csapat'
   };
 
   // ---- Segédek ----
@@ -60,6 +61,7 @@
   function vanApi() { return API && API.indexOf('IDE_JON') !== 0; }
   function lekeres() {
     if (!vanApi()) { render(true); return Promise.resolve(); }
+    if (A.megosztott) return Promise.resolve();   // megosztott végeredmény: nincs élő verseny-lekérés
     var t0 = Date.now();
     var url = API + '?action=state' + (A.kod && !A.en && !A.kodHibas ? '&k=' + encodeURIComponent(A.kod) : '');
     return fetch(url).then(function (r) { return r.json(); }).then(function (v) {
@@ -159,6 +161,7 @@
   }
   function nezetHtml() {
     if (!vanApi()) return '<div class="uzenet hiba">Nincs beállítva a szerver címe a config.js fájlban.</div>';
+    if (A.megosztott) return eredmenyHtml();
     if (!A.szerver) return A.kapcsolat ? '<div class="betolt">Betöltés…</div>' : '<div class="uzenet hiba">Nem érem el a szervert. Újrapróbálom…</div>';
     var h = fejHtml();
     if (!A.kapcsolat) h += '<div class="uzenet hiba">Nincs kapcsolat – újrapróbálom…</div>';
@@ -230,6 +233,7 @@
   function korTartalom() {
     var c = cfg(), h = '';
     if (c.allapot !== 'fut') return '<div class="sotet"><h2>A verseny még nem kezdődött el</h2><span class="halv">Amint az Admin elindítja, itt látjátok a köröket.</span></div>';
+    if (c.lezarva) return lezartKorHtml();
     if (!A.hang) h += '<button class="gomb masod szeles" data-akcio="hangBe">Hang és ébren tartás bekapcsolása</button>';
     h += c.kor ? oraHtml() : '<div class="sotet"><h2>Hamarosan kezdünk</h2><span class="halv">Az 1. kört az Admin indítja.</span></div>';
     if (A.kodHibas) h += '<div class="uzenet hiba">Ez a kód nem érvényes. Írjátok be újra.</div>';
@@ -438,7 +442,7 @@
   // Állás
   // =========================================================
   function allasHtml() {
-    var c = cfg(), h = '<div class="sor"><h1>Állás</h1><span class="kicsi">' + (c.kor ? c.kor + '. kör' : '') + '</span></div>';
+    var c = cfg(), h = '<div class="sor"><h1>Állás</h1><span class="kicsi">' + (c.lezarva ? 'Végeredmény' : c.kor ? c.kor + '. kör' : '') + '</span></div>';
     if (!c.menetrend) return h + '<div class="sotet"><span class="halv">A verseny még nem kezdődött el.</span></div>';
     if (L.bajnoksagE(c)) return h + bajnoksagHtml();
     var a = L.allasSzamol(c, A.szerver.beirasok), egyeni = Number(c.beallit.meret) === 1;
@@ -573,7 +577,8 @@
   }
   function vezerloHtml() {
     var c = cfg(), h = '<h1>Vezérlő' + sg(idoMeresE(c.beallit) ? 'kor_inditas|szunet|kor_lezaras' : 'kor_inditas') + '</h1>';
-    if (c.allapot !== 'fut') return h + '<div class="sotet"><span>A verseny még nincs elindítva. Beállítás, sorsolás és Start a <b>Beállítás</b> fülön.</span></div>' + veszelyHtml();
+    if (c.allapot !== 'fut') return h + '<div class="sotet"><span>A verseny még nincs elindítva. Beállítás, sorsolás és Start a <b>Beállítás</b> fülön.</span></div>' + korabbiHtml() + veszelyHtml();
+    if (c.lezarva) return h + lezartVezerloHtml();
     var R = c.menetrend.length, u = utolsok();
     h += oraHtml();
     if (!c.kor) h += '<button class="gomb fo nagy" data-akcio="kor" data-ertek="kovetkezo">1. kör indítása</button>';
@@ -616,7 +621,7 @@
       });
       h += '</div><button class="gomb masod" data-akcio="kodokBe">Elrejtés</button>';
     }
-    return h + '</div>' + visszaHtml() + veszelyHtml();
+    return h + '</div>' + lezarasHtml() + visszaHtml() + korabbiHtml() + veszelyHtml();
   }
   // Vissza a beállításhoz: Nem = folytatás módosítással, Igen = újrakezdés az elejéről
   function visszaHtml() {
@@ -626,6 +631,87 @@
         'Folytatás: az eredmények megmaradnak. Neveket és a játékok számait javíthatod, játékot törölhetsz.') + '</span>' +
       '<button class="gomb masod" data-akcio="visszaBeall">Vissza a beállításhoz</button></div>';
   }
+  // =========================================================
+  // Lezárt verseny: mentés (PDF), megosztás, Korábbi versenyek
+  // =========================================================
+  function megosztLink(id) { return location.origin + location.pathname + '?e=' + encodeURIComponent(id); }
+  // a szerver base64-ben adja a PDF-et: ebből fájl lesz, és letöltődik
+  function letolt(nev, b64) {
+    try {
+      var bin = atob(b64), t = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) t[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([t], { type: 'application/pdf' })), a = document.createElement('a');
+      a.href = url; a.download = nev; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      return true;
+    } catch (e) { return false; }
+  }
+  function pdfGomb(cimke, tipus, extra, osztaly) {
+    return '<button class="gomb ' + (osztaly || 'fo') + '" data-akcio="pdf" data-ertek="' + tipus + '"' + (extra || '') + (A.kuld ? ' disabled' : '') + '>' + (A.pdfFut === tipus + (extra || '') ? 'Készül…' : cimke) + '</button>';
+  }
+  // Játékosok és bírók: a Kör képernyő lezárt versenynél
+  function lezartKorHtml() {
+    var h = '<div class="sotet"><h2>A verseny véget ért</h2><span class="halv">A végeredmény az Állás fülön van.</span></div>';
+    if (A.en && A.en.tipus === 'u') h += pdfGomb('Saját eredménylap (PDF)', 'sajat', '', 'fo nagy') + '<span class="halv" style="font-size:13px;text-align:center">A helyezésed, a játékonkénti eredményeid és minden meccsed egy lapon. Elkészítése néhány másodperc.</span>';
+    else if (!A.en) h += kodBeiroHtml();
+    return h;
+  }
+  // Admin: a Vezérlő lezárt versenynél
+  function lezartVezerloHtml() {
+    var c = cfg(), R = c.menetrend.length, egyeni = Number(c.beallit.meret) === 1, h = '';
+    h += '<div class="uzenet ok">A verseny le van zárva. Beírás és körléptetés nincs; egy meccsre koppintva az Admin még javíthat.</div>';
+    h += '<div class="sotet"><span class="kicsi">Mentés (PDF)' + sg('mentes') + '</span><div class="racs2">' + pdfGomb('Teljes mentés', 'teljes') + pdfGomb('Statisztika', 'stat') + '</div>';
+    h += '<span class="kicsi">Játékonként' + sg('mentes_jatek') + '</span><div class="chipek">' + c.jatekok.map(function (j) {
+      return '<button class="chip" data-akcio="pdf" data-ertek="jatek" data-jatek="' + esc(j.id) + '"' + (A.kuld ? ' disabled' : '') + '>' + esc(j.nev) + '</button>';
+    }).join('') + '</div>';
+    h += '<span class="kicsi">Oklevelek az első három helyezettnek' + sg('oklevel') + '</span>';
+    if (!egyeni) h += '<div class="chipek">' + [['csapat', 'Csapatonként egy'], ['tag', 'Tagonként egy']].map(function (o) {
+      return '<button class="chip' + ((A.oklMod || 'csapat') === o[0] ? ' akt' : '') + '" data-akcio="oklMod" data-ertek="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    h += pdfGomb('Oklevelek', 'oklevel');
+    h += '<span style="font-size:13px;color:var(--szoveg2)">A PDF letöltődik, és a Google Drive „Versenymotor mentések” mappájába is bekerül.</span>';
+    if (A.pdfUrl) h += '<a href="' + esc(A.pdfUrl) + '" target="_blank" rel="noopener">Az utolsó mentés megnyitása a Drive-ban</a>';
+    h += '</div>';
+    if (c.archivId) h += '<div class="sotet"><span class="kicsi">Megosztható végeredmény' + sg('megosztas') + '</span><input class="mezo" readonly aria-label="Megosztható link" value="' + esc(megosztLink(c.archivId)) + '">' +
+      '<button class="gomb masod" data-akcio="linkMasol" data-ertek="' + esc(c.archivId) + '">Link másolása</button></div>';
+    var k = A.adminKor || c.kor || 1;
+    h += korValaszto('adminKor', k, R) + '<span class="kicsi" style="text-transform:none">Koppints egy meccsre a javításhoz.' + sg('allapotok') + '</span>' + korMeccseiHtml(k, true);
+    h += '<div class="sotet"><span style="font-size:13px;color:var(--szoveg2)">Mégis folytatnátok? A visszanyitás után újra lehet beírni és kört indítani.' + sg('visszanyit') + '</span>' +
+      '<button class="gomb masod" data-akcio="visszanyit">Verseny visszanyitása</button></div>';
+    return h + korabbiHtml() + veszelyHtml();
+  }
+  function lezarasHtml() {
+    var c = cfg();
+    if (!c.kor) return '';
+    return '<div class="sotet"><span class="kicsi">Verseny lezárása' + sg('lezaras') + '</span><span style="font-size:13px;color:var(--szoveg2)">Ha vége a versenynek: a beírás leáll, elérhetők a mentések (PDF, oklevelek), és a végeredmény a Korábbi versenyek közé kerül. Visszanyitható.</span>' +
+      '<button class="gomb fo" data-akcio="lezar">Verseny lezárása</button></div>';
+  }
+  // Admin: Korábbi versenyek (a lezárt versenyek mentett végeredménye)
+  function korabbiHtml() {
+    var h = '<div class="sotet"><span class="kicsi">Korábbi versenyek' + sg('korabbi') + '</span>';
+    if (!A.archiv) return h + '<button class="gomb masod" data-akcio="archiv">Megjelenítés</button></div>';
+    if (!A.archiv.length) h += '<span class="halv" style="font-size:14px">Még nincs lezárt verseny.</span>';
+    A.archiv.forEach(function (x) {
+      h += '<div class="kartya" style="gap:6px"><b>' + esc(x.nev) + '</b><span class="tagok">' + esc(x.datum) + '</span><div class="racs3">' +
+        '<a class="gomb vilagos" style="min-height:40px" href="' + esc(megosztLink(x.id)) + '" target="_blank" rel="noopener">Megnyitás</a>' +
+        '<button class="gomb vilagos" style="min-height:40px" data-akcio="linkMasol" data-ertek="' + esc(x.id) + '">Link másolása</button>' +
+        '<button class="gomb vilagos" style="min-height:40px;color:var(--hiba)" data-akcio="archivTorol" data-ertek="' + esc(x.id) + '">Törlés</button></div></div>';
+    });
+    return h + '<button class="gomb masod" data-akcio="archivBe">Elrejtés</button></div>';
+  }
+  // Megosztott link (?e=…): egy korábbi verseny végeredménye, csak olvasható
+  function eredmenyHtml() {
+    if (A.eredmenyHiba) return '<div class="uzenet hiba">' + esc(A.eredmenyHiba) + '</div>';
+    var E = A.eredmeny;
+    if (!E) return '<div class="betolt">Betöltés…</div>';
+    var h = '<div class="fej"><div class="logo">' + esc(String(E.nev).toUpperCase()) + '</div><span class="cimke arany">VÉGEREDMÉNY</span></div><span class="kicsi" style="text-transform:none">' + esc(E.datum) + '</span>';
+    (E.tablak || []).forEach(function (t, ti) {
+      h += '<h2>' + esc(t.cim) + '</h2><div class="tabla"><table class="etabla"><tr>' + t.fej.map(function (f, i) { return '<th' + ((t.jobb || []).indexOf(i) >= 0 ? ' class="j"' : '') + '>' + esc(f) + '</th>'; }).join('') + '</tr>' +
+        t.sorok.map(function (s) { return '<tr' + (ti === 0 && /^[123]\.$/.test(s[0]) ? ' class="dob"' : '') + '>' + s.map(function (x, i) { return '<td' + ((t.jobb || []).indexOf(i) >= 0 ? ' class="j"' : '') + '>' + esc(x) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></div>';
+    });
+    if (E.stat && E.stat.length) h += '<h2>Statisztika</h2><div class="sotet">' + E.stat.map(function (s) { return '<span style="font-size:14px"><b>' + esc(s[0]) + ':</b> ' + esc(s[1]) + '</span>'; }).join('') + '</div>';
+    return h;
+  }
+
   // =========================================================
   // Admin: Idő és befejezés (futó verseny közben)
   // =========================================================
@@ -1304,6 +1390,45 @@
     },
     urlapBe: function () { A.urlap = null; },
     lep: function (d) { var dd = Number(d.d); lepAllit(d, function (r) { return r + dd; }); },
+    // ---- lezárás, mentés, korábbi versenyek ----
+    lezar: function () {
+      var c = cfg(), hiany = meccsek().filter(function (m) { return L.meccsKesz(m) && L.meccsAllapot(m, utolsok()).allapot !== 'ok'; }).length, hatra = c.menetrend.length - c.kor;
+      if (!confirm('Lezárod a versenyt? A beírás leáll, a végeredmény a Korábbi versenyek közé kerül.' + (hatra ? '\nFigyelem: még ' + hatra + ' kör hátravan.' : '') + (hiany ? '\nFigyelem: ' + hiany + ' meccsnek nincs elfogadott eredménye.' : '') + '\nKésőbb visszanyitható.')) return;
+      kuld({ action: 'lezar', pin: A.pin }).then(function () { A.archiv = null; A.pdfUrl = null; siker('A verseny lezárva ✓'); return lekeres(); }).catch(function () {});
+    },
+    visszanyit: function () {
+      if (!confirm('Visszanyitod a versenyt? Újra lehet beírni és kört indítani.')) return;
+      kuld({ action: 'lezar', pin: A.pin, vissza: true }).then(function () { siker('A verseny visszanyitva ✓'); return lekeres(); }).catch(function () {});
+    },
+    oklMod: function (d) { A.oklMod = d.ertek; },
+    pdf: function (d) {
+      var t = d.ertek, b = { action: 'pdf', tipus: t };
+      if (t === 'sajat') b.k = A.kod; else b.pin = A.pin;
+      if (t === 'jatek') b.jatek = d.jatek;
+      if (t === 'oklevel') b.mod = A.oklMod || 'csapat';
+      A.pdfFut = t;
+      kuld(b).then(function (v) {
+        A.pdfFut = null;
+        if (v.url) A.pdfUrl = v.url;
+        var le = letolt(v.nev, v.b64);
+        if (v.driveHiba) A.uzenet = { tipus: 'info', szoveg: 'A PDF elkészült, de a Drive-ba nem sikerült menteni: ' + v.driveHiba };
+        else if (!le) A.uzenet = { tipus: 'info', szoveg: v.url ? 'A PDF a Drive-ban van (a letöltés ezen a készüléken nem indult el).' : 'A letöltés ezen a készüléken nem indult el.' };
+        else siker('PDF kész: ' + v.nev);
+        render(true);
+      }).catch(function () { A.pdfFut = null; render(true); });
+    },
+    linkMasol: function (d) {
+      var link = megosztLink(d.ertek);
+      try { navigator.clipboard.writeText(link).then(function () { siker('Link a vágólapon ✓'); render(false); }, function () {}); } catch (e) {}
+      A.uzenet = { tipus: 'info', szoveg: 'Megosztható link: ' + link };
+    },
+    archiv: function () { kuld({ action: 'archivLista', pin: A.pin }).then(function (v) { A.archiv = v.lista; render(true); }).catch(function () {}); },
+    archivBe: function () { A.archiv = null; },
+    archivTorol: function (d) {
+      var x = (A.archiv || []).filter(function (r) { return r.id === d.ertek; })[0];
+      if (!x || !confirm('Törlöd a(z) „' + x.nev + '” mentett végeredményét? A megosztott linkje sem fog működni.')) return;
+      kuld({ action: 'archivTorol', pin: A.pin, id: x.id }).then(function () { return AKCIO.archiv(); }).catch(function () {});
+    },
     // ---- idő és befejezés ----
     idoPanel: function () { A.idoNyitva = !A.idoNyitva; },
     idoKapcs: function () { kuld({ action: 'ido', pin: A.pin, idomeres: !idoMeresE(cfg().beallit) }).then(function () { A.utolsoFazis = {}; return lekeres(); }).catch(function () {}); },
@@ -1604,7 +1729,15 @@
 
   // ---- Indulás ----
   (function () {
-    var q = new URLSearchParams(location.search), k = q.get('k');
+    var q = new URLSearchParams(location.search), k = q.get('k'), e = q.get('e');
+    // megosztott végeredmény (?e=…): csak olvasható nézet, a link megmarad
+    if (e && vanApi()) {
+      A.megosztott = e.trim().toUpperCase();
+      fetch(API + '?action=eredmeny&e=' + encodeURIComponent(A.megosztott)).then(function (r) { return r.json(); })
+        .then(function (v) { if (v.ok) A.eredmeny = v.eredmeny; else A.eredmenyHiba = v.hiba || 'Nincs ilyen mentett verseny.'; render(true); })
+        .catch(function () { A.eredmenyHiba = 'Nem érem el a szervert.'; render(true); });
+      return;
+    }
     if (k) { A.kod = k.trim().toUpperCase(); tarIr('vm_kod', A.kod); }
     if (q.has('admin') && !A.pin) A.pinKell = true;
     if (k || q.has('admin')) history.replaceState(null, '', location.pathname);

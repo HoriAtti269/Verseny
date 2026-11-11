@@ -92,6 +92,15 @@
       ['ido_elhagy', 'Körök elhagyása a végéről', 'Az utolsó körök kimaradnak a versenyből, a lejátszott körök és az eredmények maradnak. A kieséses és csoportkörös körök nem hagyhatók el: azokat le kell játszani, vagy a kör indítása után az Admin döntéssel lezárni.'],
       ['befejez', 'Verseny befejezése most', 'A mostani kör lesz az utolsó, minden elhagyható hátralévő kör kimarad. A végeredmény a lejátszott meccsekből számolódik. Ha mégis folytatnád: a Módosításnál a játék „hányszor” számát megemelve új körök adhatók.']
     ]],
+    ['Vezérlő – Lezárás és mentés', [
+      ['lezaras', 'Verseny lezárása', 'Ha vége a versenynek. A beírás és a körléptetés leáll, elérhetők a mentések, és a végeredmény a Korábbi versenyek közé kerül. A program jelzi, ha még van hátralévő kör vagy hiányzó eredmény. Visszanyitható.'],
+      ['mentes', 'Mentés (PDF)', 'Teljes mentés: végeredmény, minden játék tabellája és minden meccs. Statisztika: legtöbb győzelem, veretlenek, legnagyobb különbségű meccs, legjobb eredmények. A PDF letöltődik, és a Google Drive „Versenymotor mentések” mappájába is bekerül. A játékosok a saját eredménylapjukat a Kör képernyőn töltik le.'],
+      ['mentes_jatek', 'Mentés játékonként', 'Egy játék tabellája és meccsei külön lapon, a verseny nevével a fejlécben.'],
+      ['oklevel', 'Oklevelek', 'Az első három helyezett kap oklevelet, fekvő A4-es lapon, „Szervező bizottság” aláírással. Csapatversenynél választható: csapatonként egy (a tagok névsorával), vagy minden tagnak saját.'],
+      ['megosztas', 'Megosztható végeredmény', 'Ezzel a linkkel bárki megnézheti a végeredményt és a játékok tabelláit, PIN és kód nélkül. Csak olvasható. A verseny törlése után is működik, amíg az Admin a Korábbi versenyek közül nem törli.'],
+      ['visszanyit', 'Verseny visszanyitása', 'A lezárás visszavonása: újra lehet beírni és kört indítani. A következő lezárás frissíti a mentett végeredményt.'],
+      ['korabbi', 'Korábbi versenyek', 'A lezárt versenyek mentett végeredménye, a „Minden törlése” után is megmarad. Megnyitás: a végeredmény új lapon. Link másolása: megosztható link. Törlés: a mentett végeredmény és a linkje megszűnik.']
+    ]],
     ['Meccs javítása', [
       ['adat_szerk', 'Adat szerkesztése', 'Az Admin átírhatja az egyik fél beírását.'],
       ['admin_dontes', 'Admin döntés', 'Az Admin döntése felülír minden beírást, és a kártyákon is ez látszik: nyert / vesztett / döntetlen (Admin döntés). A „Döntés törlése” visszaadja a döntést a beírásoknak.']
