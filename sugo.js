@@ -122,6 +122,11 @@
       ['mod_mentes', 'Mentés', 'Előbb összegzést mutat: mi törlődik, hány új kör és hány új kód lesz. Ment, ha az Admin jóváhagyja.'],
       ['teljes_ujra', 'Teljes újrabeállítás', 'Csak az Igen ágon látszik. Új sorsolás és új QR-kódok jönnek, a régi kódok érvénytelenek lesznek. A nevek és a játékok maradnak.']
     ]],
+    ['Széles nézet (laptop, fekvő iPad)', [
+      ['szeles', 'Széles nézet Be/Ki', 'Admin módban, legalább 1000 képpont széles képernyőn (laptop, fekvő iPad) a program több hasábban mutat mindent: bal oldalon a menü, a Vezérlő három hasábban, a meccs javítása oldalpanelben, a Menetrend rácsban, az Állás tabellái egymás mellett. Ki: ezen a gépen is a telefonos nézet látszik. Telefonon, álló iPaden és a játékosoknál mindig a telefonos nézet van. A beállítás ezen a gépen marad meg. Ha az Admin beállította, hogy ő is játszik („Ez vagyok én”), a menü alján a „Te is játszol” doboz mutatja a mostani játékát.'],
+      ['sz_menetrend', 'Menetrend-rács', 'Egy sor egy kör, egy oszlop egy játék egy pályája. ✓ = elfogadott eredmény, ½ = csak az egyik fél írta be, ! = ütközés (az Admin dönt). A futó kör sora ki van emelve. Egy meccsre kattintva jobb oldalon nyílik a javítás, a kör nevére kattintva a Vezérlő azt a kört mutatja. Az utolsó oszlop: ki nem játszik abban a körben.'],
+      ['nyomtatas', 'Nyomtatás', 'A böngésző nyomtatását nyitja meg. A QR-kódoknál csak a kódok kerülnek a lapra (egy lapon több, szétvágható), a Menetrendnél csak a rács. A nyomtatás párbeszédablakában PDF-be is menthető.']
+    ]],
     ['Súgó', [
       ['sugo_be', 'Súgó Be/Ki', 'Ki: eltűnnek a „?” jelek. A teljes súgó oldal továbbra is elérhető.']
     ]]
